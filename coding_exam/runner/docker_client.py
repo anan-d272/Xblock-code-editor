@@ -1,0 +1,197 @@
+"""
+Docker Sandbox Execution Client.
+Executes student code inside a hardened, isolated local Docker container.
+Used as an offline/air-gapped fallback or standalone execution engine.
+"""
+import os
+import shutil
+import subprocess
+import tempfile
+import time
+from typing import Optional
+from .client import ExecutionResult
+
+
+class DockerSandboxClient:
+    """Executes code inside an isolated Docker container with resource quotas."""
+
+    IMAGE_NAME = os.environ.get("SANDBOX_DOCKER_IMAGE", "coding-exam-sandbox:latest")
+
+    def __init__(
+        self,
+        image_name: Optional[str] = None,
+        cpu_limit: str = "0.5",
+        memory_limit: str = "128m",
+        default_timeout: int = 10,
+    ):
+        self.image_name = image_name or self.IMAGE_NAME
+        self.cpu_limit = cpu_limit
+        self.memory_limit = memory_limit
+        self.default_timeout = default_timeout
+
+    def execute(
+        self,
+        source_code: str,
+        language: str,
+        stdin: str = "",
+        cpu_time_limit: float = 5.0,
+        memory_limit: int = 128000,
+    ) -> ExecutionResult:
+        """
+        Execute code inside the local Docker sandbox container.
+
+        :param source_code: Student source code
+        :param language: 'python', 'cpp', 'c++', 'java'
+        :param stdin: Input string
+        :param cpu_time_limit: Timeout in seconds
+        :param memory_limit: Memory limit in KB
+        :return: ExecutionResult matching Judge0 output format
+        """
+        norm_lang = language.strip().lower()
+        ext_map = {
+            "python": "solution.py",
+            "python3": "solution.py",
+            "py": "solution.py",
+            "cpp": "solution.cpp",
+            "c++": "solution.cpp",
+            "java": "Main.java",
+        }
+
+        if norm_lang not in ext_map:
+            return ExecutionResult(
+                status="ERROR",
+                is_success=False,
+                stdout="",
+                stderr=f"Unsupported language: {language}",
+                compile_output="",
+                execution_time=0.0,
+                memory=0,
+                status_id=0,
+                status_description="Unsupported Language",
+                message=f"Language '{language}' not supported by Docker sandbox",
+            )
+
+        src_filename = ext_map[norm_lang]
+        tmp_dir = tempfile.mkdtemp(prefix="xblock_sandbox_")
+
+        try:
+            src_path = os.path.join(tmp_dir, src_filename)
+            in_path = os.path.join(tmp_dir, "input.in")
+
+            with open(src_path, "w", encoding="utf-8") as f:
+                f.write(source_code)
+            with open(in_path, "w", encoding="utf-8") as f:
+                f.write(stdin)
+
+            # Ensure non-root container user (UID 1001) can read files
+            os.chmod(tmp_dir, 0o777)
+            os.chmod(src_path, 0o666)
+            os.chmod(in_path, 0o666)
+
+            mem_flag = f"{max(32, memory_limit // 1024)}m"
+            timeout_sec = int(max(1, cpu_time_limit))
+
+            cmd = [
+                "docker", "run", "--rm",
+                "--network", "none",
+                "-m", mem_flag,
+                "--cpus", self.cpu_limit,
+                "--user", "1001:1001",
+                "-v", f"{tmp_dir}:/sandbox:ro",
+                self.image_name,
+                norm_lang,
+                f"/sandbox/{src_filename}",
+                "/sandbox/input.in",
+                str(timeout_sec),
+            ]
+
+            start_t = time.time()
+            proc = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=timeout_sec + 5,
+            )
+            elapsed = round(time.time() - start_t, 3)
+
+            # Exit code 101 denotes compilation error in execute.sh
+            if proc.returncode == 101:
+                return ExecutionResult(
+                    status="COMPILATION_ERROR",
+                    is_success=False,
+                    stdout="",
+                    stderr=proc.stderr,
+                    compile_output=proc.stderr,
+                    execution_time=elapsed,
+                    memory=0,
+                    status_id=6,
+                    status_description="Compilation Error",
+                )
+
+            # Exit code 137 indicates SIGKILL / Out of Memory / Timeout
+            if proc.returncode in (137, 124):
+                return ExecutionResult(
+                    status="TIME_LIMIT_EXCEEDED",
+                    is_success=False,
+                    stdout=proc.stdout,
+                    stderr="Execution timed out.",
+                    compile_output="",
+                    execution_time=elapsed,
+                    memory=0,
+                    status_id=5,
+                    status_description="Time Limit Exceeded",
+                )
+
+            if proc.returncode != 0:
+                return ExecutionResult(
+                    status="RUNTIME_ERROR",
+                    is_success=False,
+                    stdout=proc.stdout,
+                    stderr=proc.stderr,
+                    compile_output="",
+                    execution_time=elapsed,
+                    memory=0,
+                    status_id=11,
+                    status_description=f"Runtime Error (Exit Code {proc.returncode})",
+                )
+
+            return ExecutionResult(
+                status="ACCEPTED",
+                is_success=True,
+                stdout=proc.stdout,
+                stderr=proc.stderr,
+                compile_output="",
+                execution_time=elapsed,
+                memory=0,
+                status_id=3,
+                status_description="Accepted",
+            )
+
+        except subprocess.TimeoutExpired:
+            return ExecutionResult(
+                status="TIME_LIMIT_EXCEEDED",
+                is_success=False,
+                stdout="",
+                stderr="Container execution timed out on host.",
+                compile_output="",
+                execution_time=float(cpu_time_limit),
+                memory=0,
+                status_id=5,
+                status_description="Time Limit Exceeded",
+            )
+        except Exception as err:
+            return ExecutionResult(
+                status="INTERNAL_ERROR",
+                is_success=False,
+                stdout="",
+                stderr=str(err),
+                compile_output="",
+                execution_time=0.0,
+                memory=0,
+                status_id=13,
+                status_description="Internal Error",
+                message=str(err),
+            )
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)

@@ -49,3 +49,4 @@ def calculate_score(
         "total_count": total_count,
         "feedback": feedback,
     }
+
