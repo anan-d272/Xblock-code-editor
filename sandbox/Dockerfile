@@ -25,3 +25,4 @@ USER sandboxuser
 WORKDIR /sandbox_run
 
 ENTRYPOINT ["/usr/local/bin/execute.sh"]
+

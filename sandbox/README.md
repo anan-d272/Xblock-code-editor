@@ -51,3 +51,4 @@ docker build --network=host -t coding-exam-sandbox:latest sandbox/
 docker run --rm --network none -m 128m --cpus 0.5 \
     coding-exam-sandbox:latest python /dev/null /dev/null 5
 ```
+

@@ -195,3 +195,4 @@ class DockerSandboxClient:
             )
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
+
