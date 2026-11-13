@@ -17,6 +17,15 @@ setup(
             "coding_exam = coding_exam:CodingExamXBlock",
         ],
     },
+    # Explicit package_data covers editable installs where MANIFEST.in
+    # is not consulted.
+    package_data={
+        "coding_exam": [
+            "templates/*.html",
+            "static/css/*.css",
+            "static/js/*.js",
+            "static/js/vendor/*.js",
+        ],
+    },
     include_package_data=True,
 )
-

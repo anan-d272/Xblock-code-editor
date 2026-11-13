@@ -1,0 +1,34 @@
+<!-- Student view for the Coding Exam XBlock.
+     Template variables are injected by block.py using [[KEY]] markers. -->
+<div class="coding-exam-xblock">
+
+  <!-- ── Toolbar: language selector + save indicator ── -->
+  <div class="ce-toolbar">
+    <label class="ce-lang-label">Language</label>
+    <select class="ce-lang-select">
+      <option value="python">Python</option>
+      <option value="java">Java</option>
+      <option value="cpp">C++</option>
+    </select>
+    <span class="ce-save-status"></span>
+  </div>
+
+  <!-- ── CodeMirror 6 mounts into this div ── -->
+  <div class="ce-editor-container"></div>
+
+  <!-- ── Action bar ── -->
+  <div class="ce-actions">
+    <button class="ce-run-btn">&#9654; Run</button>
+    <span class="ce-run-msg"></span>
+  </div>
+
+  <!-- ── Output panel (shown after Run) ── -->
+  <div class="ce-output-panel">
+    <div class="ce-output-header">Output</div>
+    <pre class="ce-output"></pre>
+  </div>
+
+  <!-- ── Initial state: JSON read by CodingExamXBlock() JS function ── -->
+  <script type="application/json" class="ce-init-data">[[INIT_DATA]]</script>
+
+</div>

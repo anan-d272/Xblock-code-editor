@@ -1,0 +1,3 @@
+# Ensure non-Python assets are included in source distributions.
+recursive-include coding_exam/templates *.html
+recursive-include coding_exam/static    *.css *.js
