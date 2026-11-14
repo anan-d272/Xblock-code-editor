@@ -12,9 +12,9 @@ function CodingExamXBlock(runtime, element) {   // eslint-disable-line no-unused
   "use strict";
 
   /* ------------------------------------------------------------------ *
-   * 1. Starter code — shown when a student has no saved draft yet       *
+   * 1. Default starter code fallback                                   *
    * ------------------------------------------------------------------ */
-  var STARTER = {
+  var DEFAULT_STARTER = {
     python: [
       "# Write your Python solution here",
       "",
@@ -44,9 +44,14 @@ function CodingExamXBlock(runtime, element) {   // eslint-disable-line no-unused
     ].join("\n"),
   };
 
+  var LANG_LABELS = {
+    python: "Python",
+    java: "Java",
+    cpp: "C++",
+  };
+
   /* ------------------------------------------------------------------ *
-   * 2. DOM references — all scoped to `element` to support multiple    *
-   *    instances on the same page.                                      *
+   * 2. DOM references — all scoped to `element`                        *
    * ------------------------------------------------------------------ */
   var langSelect  = element.querySelector(".ce-lang-select");
   var editorEl    = element.querySelector(".ce-editor-container");
@@ -59,16 +64,52 @@ function CodingExamXBlock(runtime, element) {   // eslint-disable-line no-unused
   /* ------------------------------------------------------------------ *
    * 3. Load initial state embedded as JSON by block.py                 *
    * ------------------------------------------------------------------ */
-  var initData = { language: "python", drafts: {} };
+  var initData = {
+    language: "python",
+    allowed_languages: ["python"],
+    starter_code: {},
+    drafts: {},
+    visible_test_cases: [],
+  };
+
   try {
-    initData = JSON.parse(element.querySelector(".ce-init-data").textContent);
+    var rawInit = element.querySelector(".ce-init-data");
+    if (rawInit && rawInit.textContent) {
+      initData = JSON.parse(rawInit.textContent);
+    }
   } catch (e) {
     console.warn("[CodingExamXBlock] could not parse init data:", e);
   }
 
-  // In-memory per-language drafts; pre-populated from server state.
+  var allowedLangs = (initData.allowed_languages && initData.allowed_languages.length > 0)
+    ? initData.allowed_languages
+    : ["python"];
+
   var drafts = Object.assign({}, initData.drafts || {});
+  var starterMap = Object.assign({}, DEFAULT_STARTER, initData.starter_code || {});
+
+  // Ensure current language is valid for this problem
   var currentLang = initData.language || "python";
+  if (allowedLangs.indexOf(currentLang) === -1) {
+    currentLang = allowedLangs[0];
+  }
+
+  // Populate language dropdown dynamically based on allowed languages
+  langSelect.innerHTML = "";
+  allowedLangs.forEach(function (langKey) {
+    var opt = document.createElement("option");
+    opt.value = langKey;
+    opt.textContent = LANG_LABELS[langKey] || langKey;
+    if (langKey === currentLang) {
+      opt.selected = true;
+    }
+    langSelect.appendChild(opt);
+  });
+
+  // If only 1 allowed language, disable dropdown to prevent confusion
+  if (allowedLangs.length <= 1) {
+    langSelect.disabled = true;
+  }
 
   /* ------------------------------------------------------------------ *
    * 4. Utility: debounce                                               *
@@ -134,14 +175,14 @@ function CodingExamXBlock(runtime, element) {   // eslint-disable-line no-unused
   }
 
   function getCode(lang) {
-    // Return saved draft if available; fall back to language starter template.
-    return (drafts[lang] !== undefined) ? drafts[lang] : (STARTER[lang] || "");
+    // Return saved draft if available; fall back to author's starter template.
+    if (drafts[lang] !== undefined) {
+      return drafts[lang];
+    }
+    return starterMap[lang] || "";
   }
 
   var langCompartment = new Compartment();
-
-  // `view` is declared before creation so the updateListener closure can
-  // reference it safely (by the time the listener fires, view is assigned).
   var view;
 
   view = new EditorView({
@@ -155,16 +196,13 @@ function CodingExamXBlock(runtime, element) {   // eslint-disable-line no-unused
         EditorView.updateListener.of(function (update) {
           if (!update.docChanged) { return; }
           var code = view.state.doc.toString();
-          drafts[currentLang] = code;        // keep in-memory draft current
+          drafts[currentLang] = code;
           debouncedSave(currentLang, code);
         }),
       ],
     }),
     parent: editorEl,
   });
-
-  // Sync the dropdown to the restored language.
-  langSelect.value = currentLang;
 
   /* ------------------------------------------------------------------ *
    * 7. Language switcher                                               *
@@ -173,12 +211,11 @@ function CodingExamXBlock(runtime, element) {   // eslint-disable-line no-unused
     var newLang = langSelect.value;
     if (newLang === currentLang) { return; }
 
-    // Persist current content before switching.
+    // Persist current content before switching
     drafts[currentLang] = view.state.doc.toString();
-
     currentLang = newLang;
 
-    // Swap editor content + syntax mode in a single transaction.
+    // Swap editor content + syntax mode in a single transaction
     view.dispatch({
       changes: {
         from  : 0,
@@ -190,7 +227,7 @@ function CodingExamXBlock(runtime, element) {   // eslint-disable-line no-unused
   });
 
   /* ------------------------------------------------------------------ *
-   * 8. Run button                                                       *
+   * 8. Run button (Executes visible tests via Teerth's runner)          *
    * ------------------------------------------------------------------ */
   var runUrl = runtime.handlerUrl(element, "run_code");
 
@@ -198,12 +235,10 @@ function CodingExamXBlock(runtime, element) {   // eslint-disable-line no-unused
     var code = view.state.doc.toString();
     var lang = currentLang;
 
-    // Disable button while running.
     runBtn.disabled    = true;
     runBtn.textContent = "Running\u2026";
     runMsg.textContent = "";
 
-    // Clear previous output.
     outputPre.textContent = "";
     outputPre.className   = "ce-output";
     outputPanel.classList.remove("visible");
@@ -219,29 +254,70 @@ function CodingExamXBlock(runtime, element) {   // eslint-disable-line no-unused
       runBtn.textContent = "\u25B6 Run";
 
       if (result.error) {
-        // Validation error returned by the handler (not an execution error).
         outputPre.textContent = "Error: " + result.error;
         outputPre.classList.add("has-error");
         outputPanel.classList.add("visible");
         return;
       }
 
-      // Build the output text from the ExecutionResult dict.
+      // Check if multi-test response structure is present
+      if (result.results && Array.isArray(result.results)) {
+        var lines = [];
+        var total = result.total_count || result.results.length;
+        var passed = result.passed_count || 0;
+
+        lines.push("=== Sample Test Results (" + passed + "/" + total + " Passed) ===");
+
+        if (result.compilation_error) {
+          lines.push("\n[Compilation Error]\n" + result.compilation_error);
+        }
+
+        result.results.forEach(function (tc, idx) {
+          var statusMark = tc.passed ? "✓ PASSED" : "✗ FAILED";
+          var header = "\n--- Case #" + (idx + 1) + ": " + statusMark + " (" + tc.status + ") ---";
+          lines.push(header);
+
+          if (tc.input && tc.input !== "[Hidden]") {
+            lines.push("Input:\n" + tc.input.trim());
+          }
+          if (tc.expected_output && tc.expected_output !== "[Hidden]") {
+            lines.push("Expected Output:\n" + tc.expected_output.trim());
+          }
+          if (tc.actual_output && tc.actual_output !== "[Hidden]") {
+            lines.push("Actual Output:\n" + tc.actual_output.trim());
+          }
+          if (tc.error_message) {
+            lines.push("Error Detail:\n" + tc.error_message);
+          }
+        });
+
+        if (result.feedback) {
+          lines.push("\nSummary: " + result.feedback);
+        }
+
+        outputPre.textContent = lines.join("\n");
+        if (passed === total && !result.compilation_error) {
+          outputPre.classList.remove("has-error");
+        } else {
+          outputPre.classList.add("has-error");
+        }
+        outputPanel.classList.add("visible");
+        return;
+      }
+
+      // Fallback single-run display
       var parts = [];
       if (result.stdout)         { parts.push(result.stdout); }
       if (result.compile_output) { parts.push("[Compile output]\n" + result.compile_output); }
       if (result.stderr)         { parts.push("[stderr]\n" + result.stderr); }
 
       var outputText = parts.join("\n").trim() || "(no output)";
-
-      // Append a status/timing footer.
       var footer = "[" + (result.status_description || result.status || "?") + "]";
       if (result.execution_time) { footer += "  time: " + result.execution_time + "s"; }
       outputText += "\n\n" + footer;
 
       outputPre.textContent = outputText;
       if (!result.is_success) { outputPre.classList.add("has-error"); }
-
       outputPanel.classList.add("visible");
     })
     .catch(function (err) {
@@ -254,4 +330,3 @@ function CodingExamXBlock(runtime, element) {   // eslint-disable-line no-unused
     });
   });
 }
-

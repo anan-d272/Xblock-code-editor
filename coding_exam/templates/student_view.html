@@ -1,15 +1,27 @@
 <!-- Student view for the Coding Exam XBlock.
-     Template variables are injected by block.py using [[KEY]] markers. -->
+     Template markers [[KEY]] are replaced server-side by block.py.
+     Hidden test cases are never rendered in this template or embedded JSON. -->
 <div class="coding-exam-xblock">
+
+  <!-- ── Problem Header: Title, Points, and Problem Statement ── -->
+  <div class="ce-problem-card">
+    <div class="ce-problem-header">
+      <h3 class="ce-problem-title">[[DISPLAY_NAME]]</h3>
+      <span class="ce-points-badge">[[POINTS]] points</span>
+    </div>
+
+    <div class="ce-problem-statement ce-statement-[[HAS_STATEMENT]]">
+      [[PROBLEM_STATEMENT]]
+    </div>
+
+    <!-- Visible Sample Test Cases (Read-only reference) -->
+    [[SAMPLE_TESTS]]
+  </div>
 
   <!-- ── Toolbar: language selector + save indicator ── -->
   <div class="ce-toolbar">
-    <label class="ce-lang-label">Language</label>
-    <select class="ce-lang-select">
-      <option value="python">Python</option>
-      <option value="java">Java</option>
-      <option value="cpp">C++</option>
-    </select>
+    <label class="ce-lang-label" for="ce-lang-select">Language</label>
+    <select id="ce-lang-select" class="ce-lang-select"></select>
     <span class="ce-save-status"></span>
   </div>
 
@@ -32,4 +44,3 @@
   <script type="application/json" class="ce-init-data">[[INIT_DATA]]</script>
 
 </div>
-
