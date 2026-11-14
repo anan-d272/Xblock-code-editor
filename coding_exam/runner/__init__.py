@@ -5,7 +5,13 @@ Contains the execution clients (Judge0 and Docker Sandbox), test-case evaluator,
 from .client import ExecutionResult, Judge0Client
 from .docker_client import DockerSandboxClient
 from .scoring import calculate_score
-from .tester import TestCase, TestCaseResult, normalize_output, run_test_cases
+from .tester import (
+    TestCase,
+    TestCaseResult,
+    normalize_output,
+    run_submission,
+    run_test_cases,
+)
 
 __all__ = [
     "Judge0Client",
@@ -15,5 +21,6 @@ __all__ = [
     "TestCaseResult",
     "normalize_output",
     "run_test_cases",
+    "run_submission",
     "calculate_score",
 ]

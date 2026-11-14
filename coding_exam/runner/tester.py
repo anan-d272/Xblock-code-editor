@@ -1,10 +1,28 @@
 """
 Test case runner and evaluation engine.
-Executes test cases against submitted code, normalizes outputs, and compares results.
+Executes test cases against submitted code, normalizes outputs, compares results,
+and computes final submission scores.
 """
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Protocol, Union, runtime_checkable
+
 from .client import ExecutionResult, Judge0Client
+from .scoring import calculate_score
+
+
+@runtime_checkable
+class ExecutionClientProtocol(Protocol):
+    """Protocol defining the interface expected of any execution client."""
+    def execute(
+        self,
+        source_code: str,
+        language: str,
+        stdin: str = "",
+        cpu_time_limit: Optional[float] = None,
+        memory_limit: Optional[int] = None,
+        **kwargs: Any,
+    ) -> ExecutionResult:
+        ...
 
 
 @dataclass
@@ -19,7 +37,7 @@ class TestCase:
     def from_dict(cls, data: Dict[str, Any], default_id: int = 1) -> "TestCase":
         """Instantiate a TestCase from a dictionary payload."""
         return cls(
-            id=data.get("id", default_id),
+            id=data.get("id", data.get("test_case_id", default_id)),
             input=str(data.get("input", "")),
             expected_output=str(data.get("expected_output", "")),
             is_hidden=bool(data.get("is_hidden", False)),
@@ -72,19 +90,23 @@ def normalize_output(text: Optional[str]) -> str:
 
 
 def run_test_cases(
-    client: Judge0Client,
+    client: Any,
     source_code: str,
     language: str,
     test_cases: List[TestCase],
+    cpu_time_limit: Optional[float] = None,
+    memory_limit: Optional[int] = None,
     stop_on_compilation_error: bool = True,
 ) -> Dict[str, Any]:
     """
     Execute student code against a list of test cases.
 
-    :param client: Initialized Judge0Client
+    :param client: Execution client (Judge0Client, DockerSandboxClient, etc.)
     :param source_code: Source code submitted by student
-    :param language: Programming language
+    :param language: Programming language ('python', 'cpp', 'java')
     :param test_cases: List of TestCase objects
+    :param cpu_time_limit: Maximum CPU time in seconds per test case
+    :param memory_limit: Maximum memory in kilobytes
     :param stop_on_compilation_error: If True, halts execution on compilation error
     :return: Dictionary containing test summary and detailed results per test case
     """
@@ -103,7 +125,7 @@ def run_test_cases(
                     is_hidden=tc.is_hidden,
                     input="[Hidden]" if tc.is_hidden else tc.input,
                     expected_output="[Hidden]" if tc.is_hidden else tc.expected_output,
-                    actual_output="",
+                    actual_output="[Hidden]" if tc.is_hidden else "",
                     status="SKIPPED",
                     error_message="Skipped due to previous compilation error.",
                     execution_time=0.0,
@@ -115,6 +137,8 @@ def run_test_cases(
             source_code=source_code,
             language=language,
             stdin=tc.input,
+            cpu_time_limit=cpu_time_limit,
+            memory_limit=memory_limit,
         )
 
         # Check for Compilation Error
@@ -127,7 +151,7 @@ def run_test_cases(
                     is_hidden=tc.is_hidden,
                     input="[Hidden]" if tc.is_hidden else tc.input,
                     expected_output="[Hidden]" if tc.is_hidden else tc.expected_output,
-                    actual_output="",
+                    actual_output="[Hidden]" if tc.is_hidden else "",
                     status="COMPILATION_ERROR",
                     error_message=compilation_error,
                     execution_time=exec_res.execution_time,
@@ -144,7 +168,7 @@ def run_test_cases(
                     is_hidden=tc.is_hidden,
                     input="[Hidden]" if tc.is_hidden else tc.input,
                     expected_output="[Hidden]" if tc.is_hidden else tc.expected_output,
-                    actual_output=exec_res.stdout,
+                    actual_output="[Hidden]" if tc.is_hidden else exec_res.stdout,
                     status="RUNTIME_ERROR",
                     error_message=exec_res.stderr or "Runtime error occurred.",
                     execution_time=exec_res.execution_time,
@@ -161,7 +185,7 @@ def run_test_cases(
                     is_hidden=tc.is_hidden,
                     input="[Hidden]" if tc.is_hidden else tc.input,
                     expected_output="[Hidden]" if tc.is_hidden else tc.expected_output,
-                    actual_output=exec_res.stdout,
+                    actual_output="[Hidden]" if tc.is_hidden else exec_res.stdout,
                     status="TIME_LIMIT_EXCEEDED",
                     error_message=f"Time limit exceeded ({exec_res.execution_time}s).",
                     execution_time=exec_res.execution_time,
@@ -169,7 +193,7 @@ def run_test_cases(
             )
             continue
 
-        # Check for execution failure / HTTP / Connection errors
+        # Check for infrastructure/HTTP errors
         if not exec_res.is_success:
             results.append(
                 TestCaseResult(
@@ -178,7 +202,7 @@ def run_test_cases(
                     is_hidden=tc.is_hidden,
                     input="[Hidden]" if tc.is_hidden else tc.input,
                     expected_output="[Hidden]" if tc.is_hidden else tc.expected_output,
-                    actual_output=exec_res.stdout,
+                    actual_output="[Hidden]" if tc.is_hidden else exec_res.stdout,
                     status=exec_res.status,
                     error_message=exec_res.stderr or exec_res.message or "Execution error.",
                     execution_time=exec_res.execution_time,
@@ -186,7 +210,7 @@ def run_test_cases(
             )
             continue
 
-        # Output comparison
+        # Output comparison with whitespace and line-ending normalization
         normalized_actual = normalize_output(exec_res.stdout)
         normalized_expected = normalize_output(tc.expected_output)
 
@@ -197,7 +221,7 @@ def run_test_cases(
         # Sanitize details for hidden test cases
         display_input = "[Hidden]" if tc.is_hidden else tc.input
         display_expected = "[Hidden]" if tc.is_hidden else tc.expected_output
-        display_actual = "[Hidden]" if (tc.is_hidden and not passed) else exec_res.stdout
+        display_actual = "[Hidden]" if tc.is_hidden else exec_res.stdout
 
         results.append(
             TestCaseResult(
@@ -218,4 +242,84 @@ def run_test_cases(
         "passed_count": passed_count,
         "compilation_error": compilation_error,
         "results": [r.to_dict() for r in results],
+    }
+
+
+def run_submission(
+    client: Any,
+    source_code: str,
+    language: str,
+    test_cases_data: List[Union[Dict[str, Any], TestCase]],
+    action: str = "run",
+    max_points: float = 1.0,
+    cpu_time_limit: Optional[float] = None,
+    memory_limit: Optional[int] = None,
+) -> Dict[str, Any]:
+    """
+    High-level handler function designed for Open edX XBlock handlers.
+    Takes raw test case data, filters by action ('run' vs 'submit'), evaluates,
+    and returns a structured API-compliant response.
+
+    :param client: Execution client (Judge0Client or DockerSandboxClient)
+    :param source_code: Student submitted code
+    :param language: Target programming language
+    :param test_cases_data: List of test cases (either TestCase objects or dicts)
+    :param action: 'run' (visible test cases only) or 'submit' (all test cases)
+    :param max_points: Maximum score points (default 1.0)
+    :param cpu_time_limit: Execution timeout in seconds
+    :param memory_limit: Memory limit in KB
+    :return: Full response dictionary adhering to docs/API.md
+    """
+    # 1. Parse test cases
+    parsed_cases: List[TestCase] = []
+    for idx, item in enumerate(test_cases_data):
+        if isinstance(item, TestCase):
+            parsed_cases.append(item)
+        elif isinstance(item, dict):
+            parsed_cases.append(TestCase.from_dict(item, default_id=idx + 1))
+
+    # 2. Filter test cases if action is 'run' (sample/visible only)
+    action_norm = action.strip().lower()
+    if action_norm == "run":
+        evaluation_cases = [tc for tc in parsed_cases if not tc.is_hidden]
+        # If no visible cases defined, fall back to evaluating all
+        if not evaluation_cases:
+            evaluation_cases = parsed_cases
+    else:
+        evaluation_cases = parsed_cases
+
+    # 3. Execute test cases
+    eval_summary = run_test_cases(
+        client=client,
+        source_code=source_code,
+        language=language,
+        test_cases=evaluation_cases,
+        cpu_time_limit=cpu_time_limit,
+        memory_limit=memory_limit,
+    )
+
+    # 4. Compute score
+    scoring = calculate_score(
+        passed_count=eval_summary["passed_count"],
+        total_count=eval_summary["total_count"],
+        max_points=max_points,
+    )
+
+    # 5. Build standard API response
+    overall_status = "success"
+    if eval_summary["compilation_error"]:
+        overall_status = "compilation_error"
+
+    return {
+        "status": overall_status,
+        "action": action_norm,
+        "language": language,
+        "score": scoring["score"],
+        "max_points": scoring["max_points"],
+        "percentage": scoring["percentage"],
+        "passed_count": scoring["passed_count"],
+        "total_count": scoring["total_count"],
+        "feedback": scoring["feedback"],
+        "compilation_error": eval_summary["compilation_error"],
+        "results": eval_summary["results"],
     }
