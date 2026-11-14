@@ -1,5 +1,102 @@
-<!-- Studio view stub — authoring UI comes in a later day. -->
+<!-- Studio authoring view for Coding Exam XBlock.
+     Initialized via coding_exam_studio.js with standard runtime.notify patterns. -->
 <div class="coding-exam-studio">
-  <p><strong>Coding Exam</strong> — Studio settings will go here (Day 4+).</p>
-</div>
 
+  <div class="ce-studio-header">
+    <h3>Edit Coding Problem</h3>
+  </div>
+
+  <!-- Error banner for validation feedback -->
+  <div class="ce-studio-error" style="display: none;"></div>
+
+  <form class="ce-studio-form" onsubmit="return false;">
+
+    <!-- 1. Display Name -->
+    <div class="ce-form-group">
+      <label class="ce-form-label" for="ce-input-title">Problem Title</label>
+      <input type="text" id="ce-input-title" class="ce-form-control ce-studio-title"
+             placeholder="e.g. Sum of Two Integers" maxlength="255" required />
+      <span class="ce-form-help">Displayed in the course outline, unit header, and Studio.</span>
+    </div>
+
+    <!-- 2. Problem Statement -->
+    <div class="ce-form-group">
+      <label class="ce-form-label" for="ce-input-statement">Problem Statement & Instructions</label>
+      <textarea id="ce-input-statement" class="ce-form-control ce-studio-statement" rows="6"
+                placeholder="Describe the task, input format, constraints, and examples..."></textarea>
+      <span class="ce-form-help">Instructions shown to the student above the code editor.</span>
+    </div>
+
+    <!-- 3. Points -->
+    <div class="ce-form-group">
+      <label class="ce-form-label" for="ce-input-points">Maximum Points</label>
+      <input type="number" id="ce-input-points" class="ce-form-control ce-studio-points"
+             min="0.1" step="0.5" value="10.0" required />
+      <span class="ce-form-help">Maximum grade points possible for this problem (must be greater than 0).</span>
+    </div>
+
+    <!-- 4. Allowed Languages -->
+    <div class="ce-form-group">
+      <label class="ce-form-label">Allowed Programming Languages</label>
+      <div class="ce-checkbox-group">
+        <label class="ce-checkbox-label">
+          <input type="checkbox" class="ce-lang-cb" value="python" /> Python
+        </label>
+        <label class="ce-checkbox-label">
+          <input type="checkbox" class="ce-lang-cb" value="java" /> Java
+        </label>
+        <label class="ce-checkbox-label">
+          <input type="checkbox" class="ce-lang-cb" value="cpp" /> C++
+        </label>
+      </div>
+      <span class="ce-form-help">Students can only select from the checked languages. At least one required.</span>
+    </div>
+
+    <!-- 5. Starter Code Templates -->
+    <div class="ce-form-group">
+      <label class="ce-form-label">Starter Code Templates</label>
+      <span class="ce-form-help">Initial code displayed in the editor when the student selects a language.</span>
+
+      <div class="ce-starter-tabs">
+        <button type="button" class="ce-tab-btn active" data-tab="python">Python</button>
+        <button type="button" class="ce-tab-btn" data-tab="java">Java</button>
+        <button type="button" class="ce-tab-btn" data-tab="cpp">C++</button>
+      </div>
+
+      <div class="ce-starter-pane" data-pane="python">
+        <textarea class="ce-form-control ce-code-textarea ce-starter-python" rows="8" spellcheck="false"></textarea>
+      </div>
+      <div class="ce-starter-pane" data-pane="java" style="display: none;">
+        <textarea class="ce-form-control ce-code-textarea ce-starter-java" rows="8" spellcheck="false"></textarea>
+      </div>
+      <div class="ce-starter-pane" data-pane="cpp" style="display: none;">
+        <textarea class="ce-form-control ce-code-textarea ce-starter-cpp" rows="8" spellcheck="false"></textarea>
+      </div>
+    </div>
+
+    <!-- 6. Test Cases Section -->
+    <div class="ce-form-group ce-test-cases-section">
+      <div class="ce-test-cases-header">
+        <label class="ce-form-label">Test Cases</label>
+        <button type="button" class="ce-btn ce-btn-secondary ce-add-tc-btn">+ Add Test Case</button>
+      </div>
+      <span class="ce-form-help">
+        Visible test cases are shown to students as sample cases and evaluated during "Run".
+        Hidden test cases are evaluated only on submission and never exposed to the client.
+      </span>
+
+      <div class="ce-test-cases-list"></div>
+    </div>
+
+    <!-- 7. Modal Actions -->
+    <div class="ce-studio-actions">
+      <button type="button" class="ce-btn ce-btn-primary ce-studio-save-btn">Save</button>
+      <button type="button" class="ce-btn ce-btn-secondary ce-studio-cancel-btn">Cancel</button>
+    </div>
+
+  </form>
+
+  <!-- Embedded initial data for Studio JS -->
+  <script type="application/json" class="ce-studio-init-data">[[INIT_DATA]]</script>
+
+</div>

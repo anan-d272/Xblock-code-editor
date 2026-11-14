@@ -1,0 +1,272 @@
+/* ============================================================
+   Coding Exam XBlock — Studio authoring styles
+   Scoped strictly to .coding-exam-studio to prevent clashes with
+   Open edX Studio base styles.
+   ============================================================ */
+
+.coding-exam-studio {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: #24292f;
+  padding: 16px 20px 24px;
+  background: #ffffff;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.ce-studio-header h3 {
+  margin: 0 0 16px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2328;
+  border-bottom: 1px solid #d0d7de;
+  padding-bottom: 10px;
+}
+
+/* ── Error Banner ── */
+.ce-studio-error {
+  background-color: #ffebe9;
+  border: 1px solid rgba(255, 129, 130, 0.4);
+  color: #cf222e;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 18px;
+}
+
+/* ── Form Controls ── */
+.ce-form-group {
+  margin-bottom: 20px;
+}
+
+.ce-form-label {
+  display: block;
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 6px;
+  color: #24292f;
+}
+
+.ce-form-help {
+  display: block;
+  font-size: 12px;
+  color: #57606a;
+  margin-top: 4px;
+}
+
+.ce-form-control {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #1f2328;
+  background-color: #ffffff;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  box-shadow: inset 0 1px 0 rgba(208, 215, 222, 0.2);
+  transition: border-color 0.15s ease-in-out;
+}
+
+.ce-form-control:focus {
+  border-color: #0969da;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.3);
+}
+
+.ce-code-textarea {
+  font-family: "JetBrains Mono", "Cascadia Code", "Fira Mono", Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.45;
+  tab-size: 4;
+}
+
+/* ── Checkboxes ── */
+.ce-checkbox-group {
+  display: flex;
+  gap: 20px;
+  margin: 6px 0;
+}
+
+.ce-checkbox-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #24292f;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ce-checkbox-label input[type="checkbox"] {
+  cursor: pointer;
+  width: 15px;
+  height: 15px;
+}
+
+/* ── Starter Code Tabs ── */
+.ce-starter-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #d0d7de;
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+.ce-tab-btn {
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  color: #57606a;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.ce-tab-btn:hover {
+  color: #24292f;
+}
+
+.ce-tab-btn.active {
+  color: #0969da;
+  border-bottom-color: #0969da;
+  font-weight: 600;
+}
+
+.ce-starter-pane {
+  margin-top: 6px;
+}
+
+/* ── Test Cases List ── */
+.ce-test-cases-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.ce-tc-row {
+  background: #f6f8fa;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 12px 14px;
+  margin-top: 10px;
+}
+
+.ce-tc-row-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.ce-tc-badge {
+  font-size: 12px;
+  font-weight: 700;
+  background: #eaecef;
+  color: #24292f;
+  padding: 2px 8px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ce-tc-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.ce-hidden-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #57606a;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ce-tc-fields {
+  display: flex;
+  gap: 14px;
+}
+
+.ce-tc-col {
+  flex: 1;
+}
+
+.ce-tc-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #57606a;
+  margin-bottom: 4px;
+}
+
+/* ── Buttons ── */
+.ce-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  white-space: nowrap;
+  vertical-align: middle;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  transition: 0.2s cubic-bezier(0.3, 0, 0.5, 1);
+}
+
+.ce-btn-primary {
+  color: #ffffff;
+  background-color: #1f883d;
+  border-color: rgba(31, 35, 40, 0.15);
+  box-shadow: 0 1px 0 rgba(31, 35, 40, 0.1);
+}
+
+.ce-btn-primary:hover {
+  background-color: #1a7f37;
+}
+
+.ce-btn-secondary {
+  color: #24292f;
+  background-color: #f6f8fa;
+  border-color: rgba(31, 35, 40, 0.15);
+  box-shadow: 0 1px 0 rgba(31, 35, 40, 0.04);
+}
+
+.ce-btn-secondary:hover {
+  background-color: #f3f4f6;
+  border-color: rgba(31, 35, 40, 0.15);
+}
+
+.ce-btn-danger {
+  color: #cf222e;
+  background: transparent;
+  border: none;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 6px;
+}
+
+.ce-btn-danger:hover {
+  color: #a40e26;
+  text-decoration: underline;
+}
+
+.ce-studio-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #d0d7de;
+}
+
