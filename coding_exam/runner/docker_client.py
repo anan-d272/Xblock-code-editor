@@ -34,8 +34,9 @@ class DockerSandboxClient:
         source_code: str,
         language: str,
         stdin: str = "",
-        cpu_time_limit: float = 5.0,
-        memory_limit: int = 128000,
+        cpu_time_limit: Optional[float] = None,
+        memory_limit: Optional[int] = None,
+        **kwargs,
     ) -> ExecutionResult:
         """
         Execute code inside the local Docker sandbox container.
@@ -43,8 +44,8 @@ class DockerSandboxClient:
         :param source_code: Student source code
         :param language: 'python', 'cpp', 'c++', 'java'
         :param stdin: Input string
-        :param cpu_time_limit: Timeout in seconds
-        :param memory_limit: Memory limit in KB
+        :param cpu_time_limit: Timeout in seconds (defaults to self.default_timeout)
+        :param memory_limit: Memory limit in KB (defaults to 128000 KB)
         :return: ExecutionResult matching Judge0 output format
         """
         norm_lang = language.strip().lower()
@@ -88,8 +89,11 @@ class DockerSandboxClient:
             os.chmod(src_path, 0o666)
             os.chmod(in_path, 0o666)
 
-            mem_flag = f"{max(32, memory_limit // 1024)}m"
-            timeout_sec = int(max(1, cpu_time_limit))
+            mem_kb = int(memory_limit) if memory_limit is not None else 128000
+            mem_flag = f"{max(32, mem_kb // 1024)}m"
+
+            actual_time = float(cpu_time_limit) if cpu_time_limit is not None else float(self.default_timeout)
+            timeout_sec = int(max(1, actual_time))
 
             cmd = [
                 "docker", "run", "--rm",
@@ -175,7 +179,7 @@ class DockerSandboxClient:
                 stdout="",
                 stderr="Container execution timed out on host.",
                 compile_output="",
-                execution_time=float(cpu_time_limit),
+                execution_time=float(cpu_time_limit or self.default_timeout),
                 memory=0,
                 status_id=5,
                 status_description="Time Limit Exceeded",
@@ -195,4 +199,3 @@ class DockerSandboxClient:
             )
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
-
