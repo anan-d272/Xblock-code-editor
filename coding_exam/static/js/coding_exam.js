@@ -14,6 +14,11 @@
 function CodingExamXBlock(runtime, element) {   // eslint-disable-line no-unused-vars
   "use strict";
 
+  function getCookie(name) {
+    var m = document.cookie.match('(?:^|; )' + name + '=([^;]*)');
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+
   /* ------------------------------------------------------------------ *
    * Constants                                                          *
    * ------------------------------------------------------------------ */
@@ -203,9 +208,13 @@ function CodingExamXBlock(runtime, element) {   // eslint-disable-line no-unused
   function saveDraft(lang, code) {
     setSaveStatus("Saving\u2026", "saving");
     fetch(saveUrl, {
-      method  : "POST",
-      headers : { "Content-Type": "application/json" },
-      body    : JSON.stringify({ language: lang, code: code }),
+      method      : "POST",
+      credentials : "same-origin",
+      headers     : {
+        "Content-Type": "application/json",
+        "X-CSRFToken": getCookie("csrftoken"),
+      },
+      body        : JSON.stringify({ language: lang, code: code }),
     })
     .then(function (r) { return r.json(); })
     .then(function (data) {
@@ -429,9 +438,13 @@ function CodingExamXBlock(runtime, element) {   // eslint-disable-line no-unused
     var payload = integrityQueue.slice();
     integrityQueue = [];
     fetch(integrityUrl, {
-      method  : "POST",
-      headers : { "Content-Type": "application/json" },
-      body    : JSON.stringify(payload),
+      method      : "POST",
+      credentials : "same-origin",
+      headers     : {
+        "Content-Type": "application/json",
+        "X-CSRFToken": getCookie("csrftoken"),
+      },
+      body        : JSON.stringify(payload),
     }).catch(function (err) {
       console.warn("[CodingExamXBlock] integrity event POST failed:", err);
     });
@@ -543,9 +556,13 @@ function CodingExamXBlock(runtime, element) {   // eslint-disable-line no-unused
     runResultsBody.innerHTML = "";
 
     fetch(runUrl, {
-      method  : "POST",
-      headers : { "Content-Type": "application/json" },
-      body    : JSON.stringify({ language: lang, code: code }),
+      method      : "POST",
+      credentials : "same-origin",
+      headers     : {
+        "Content-Type": "application/json",
+        "X-CSRFToken": getCookie("csrftoken"),
+      },
+      body        : JSON.stringify({ language: lang, code: code }),
     })
     .then(function (r) { return r.json(); })
     .then(function (result) {
@@ -609,9 +626,13 @@ function CodingExamXBlock(runtime, element) {   // eslint-disable-line no-unused
     flushIntegrityEvents();
 
     fetch(submitUrl, {
-      method  : "POST",
-      headers : { "Content-Type": "application/json" },
-      body    : JSON.stringify({ language: lang, code: code }),
+      method      : "POST",
+      credentials : "same-origin",
+      headers     : {
+        "Content-Type": "application/json",
+        "X-CSRFToken": getCookie("csrftoken"),
+      },
+      body        : JSON.stringify({ language: lang, code: code }),
     })
     .then(function (r) { return r.json(); })
     .then(function (result) {

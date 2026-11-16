@@ -10,6 +10,11 @@
 function CodingExamStudioXBlock(runtime, element) {
   "use strict";
 
+  function getCookie(name) {
+    var m = document.cookie.match('(?:^|; )' + name + '=([^;]*)');
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+
   // ------------------------------------------------------------------ //
   // 1. Scoped DOM selectors                                             //
   // ------------------------------------------------------------------ //
@@ -280,7 +285,11 @@ function CodingExamStudioXBlock(runtime, element) {
 
     fetch(submitUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": getCookie("csrftoken"),
+      },
       body: JSON.stringify(payload),
     })
       .then(function (res) {
