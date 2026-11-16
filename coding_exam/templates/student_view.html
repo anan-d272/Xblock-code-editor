@@ -28,16 +28,25 @@
   <!-- ── CodeMirror 6 mounts into this div ── -->
   <div class="ce-editor-container"></div>
 
-  <!-- ── Action bar ── -->
+  <!-- ── Action bar: Run + Submit + status ── -->
   <div class="ce-actions">
     <button class="ce-run-btn">&#9654; Run</button>
+    <button class="ce-submit-btn">&#10003; Submit</button>
     <span class="ce-run-msg"></span>
+    <span class="ce-attempts-info"></span>
   </div>
 
-  <!-- ── Output panel (shown after Run) ── -->
-  <div class="ce-output-panel">
-    <div class="ce-output-header">Output</div>
-    <pre class="ce-output"></pre>
+  <!-- ── Run results panel (visible tests only, shown after Run) ── -->
+  <div class="ce-run-panel ce-results-panel">
+    <div class="ce-panel-header">Sample Test Results</div>
+    <div class="ce-panel-body ce-run-results-body"></div>
+  </div>
+
+  <!-- ── Submit results panel (all tests, shown after Submit) ── -->
+  <div class="ce-submit-panel ce-results-panel">
+    <div class="ce-panel-header">Submission Results</div>
+    <div class="ce-submit-score-summary"></div>
+    <div class="ce-panel-body ce-submit-results-body"></div>
   </div>
 
   <!-- ── Initial state: JSON read by CodingExamXBlock() JS function ── -->

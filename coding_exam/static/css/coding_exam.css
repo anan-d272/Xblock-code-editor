@@ -212,19 +212,42 @@
   cursor: not-allowed;
 }
 
+.ce-submit-btn {
+  padding: 6px 18px;
+  background: #0969da;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ce-submit-btn:hover:not(:disabled) { background: #0756b6; }
+.ce-submit-btn:disabled {
+  background: #a5c5f5;
+  cursor: not-allowed;
+}
+
 .ce-run-msg {
   font-size: 12px;
   color: #57606a;
 }
 
-/* ── Output panel ── */
-.ce-output-panel {
+.ce-attempts-info {
+  font-size: 12px;
+  color: #57606a;
+  margin-left: auto;
+}
+
+/* ── Results panels (Run & Submit) ── */
+.ce-results-panel {
   display: none;
   border-top: 1px solid #d0d7de;
 }
-.ce-output-panel.visible { display: block; }
+.ce-results-panel.visible { display: block; }
 
-.ce-output-header {
+.ce-panel-header {
   padding: 6px 16px;
   font-size: 11px;
   font-weight: 700;
@@ -235,18 +258,125 @@
   border-bottom: 1px solid #eaecef;
 }
 
-.ce-output {
-  margin: 0;
-  padding: 12px 16px;
-  font-family: "JetBrains Mono", "Cascadia Code", "Fira Mono", Consolas, monospace;
+.ce-panel-body {
+  padding: 10px 16px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+/* ── Score summary ── */
+.ce-score-summary {
+  padding: 10px 16px;
   font-size: 13px;
-  line-height: 1.6;
-  min-height: 40px;
-  max-height: 260px;
-  overflow: auto;
+  font-weight: 600;
+  border-bottom: 1px solid #eaecef;
+}
+.ce-score-pass    { background: #d1f7d1; color: #145a14; }
+.ce-score-partial { background: #fff4cc; color: #633500; }
+
+.ce-score-fraction { margin-right: 6px; }
+
+/* ── Per-test-case rows ── */
+.ce-tc-row {
+  border: 1px solid #e1e4e8;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+.ce-tc-pass-row { border-color: #a3d9a5; }
+.ce-tc-fail-row { border-color: #f1b8b8; }
+
+.ce-tc-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #f6f8fa;
+  flex-wrap: wrap;
+}
+.ce-tc-pass-row .ce-tc-header { background: #eafaea; }
+.ce-tc-fail-row .ce-tc-header { background: #fdf2f2; }
+
+.ce-tc-pass { color: #1a7f37; font-size: 12px; }
+.ce-tc-fail { color: #cf222e; font-size: 12px; }
+
+.ce-tc-label  { color: #24292f; }
+.ce-tc-status { color: #57606a; font-weight: 400; margin-left: auto; }
+
+.ce-tc-hidden-badge {
+  font-size: 10px;
+  font-weight: 700;
+  background: #eaecef;
+  color: #57606a;
+  border-radius: 10px;
+  padding: 1px 7px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ce-tc-io-grid {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #fff;
+  flex-wrap: wrap;
+}
+.ce-tc-io-col {
+  flex: 1;
+  min-width: 100px;
+}
+.ce-tc-pre {
+  margin: 2px 0 0;
+  padding: 5px 8px;
+  background: #f6f8fa;
+  border: 1px solid #e1e4e8;
+  border-radius: 4px;
+  font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  font-size: 11px;
   white-space: pre-wrap;
   word-break: break-word;
-  background: #161b22;
-  color: #c9d1d9;
+  max-height: 100px;
+  overflow-y: auto;
 }
-.ce-output.has-error { color: #f78166; }
+
+.ce-tc-error {
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #cf222e;
+  background: #fdf2f2;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── Compile error box ── */
+.ce-compile-error {
+  background: #161b22;
+  color: #f78166;
+  border-radius: 4px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.ce-compile-error strong { display: block; margin-bottom: 4px; color: #ff9492; }
+
+/* ── Generic error box ── */
+.ce-error-box {
+  background: #fdf2f2;
+  border: 1px solid #f1b8b8;
+  border-radius: 4px;
+  padding: 8px 12px;
+  color: #cf222e;
+  font-size: 13px;
+}
+.ce-no-results {
+  color: #57606a;
+  font-size: 13px;
+}

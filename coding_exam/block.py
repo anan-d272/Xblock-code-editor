@@ -1,9 +1,9 @@
 """
-Coding Exam XBlock — Day 4: Problem Authoring & Settings.
+Coding Exam XBlock — Days 5 & 6: Run/Submit end-to-end, grading, clipboard protection.
 
 Allows instructors to create coding problems with:
 - Display name and problem statement
-- Points (grading weight)
+- Points (grading weight), max attempts
 - Allowed programming languages (subset of python, java, cpp)
 - Per-language starter code templates
 - Visible and hidden test cases
@@ -14,11 +14,13 @@ Teerth's execution client and test case runner.
 import html
 import json
 import math
+import re
+import datetime
 import pkg_resources
 
 from web_fragments.fragment import Fragment
 from xblock.core import XBlock
-from xblock.fields import Dict, Float, List, Scope, String
+from xblock.fields import Boolean, Dict, Float, Integer, List, Scope, String
 
 from .runner import Judge0Client, run_submission
 
@@ -31,6 +33,10 @@ MAX_TITLE_LENGTH = 255          # 255 characters
 MAX_STATEMENT_LENGTH = 50_000   # 50k characters
 MAX_TEST_CASES = 50             # Up to 50 test cases per problem
 MAX_TEST_CASE_IO_SIZE = 10_240  # 10 KB per input/output
+
+# Sanitisation helpers
+_SERVER_PATH_RE = re.compile(r"/openedx/[^\s]*")
+MAX_ERROR_MSG_LENGTH = 2000     # Cap compiler/runtime error messages sent to browser
 
 # Default starter code templates
 DEFAULT_STARTER_CODE = {
@@ -71,6 +77,13 @@ DEFAULT_TEST_CASES = [
 class CodingExamXBlock(XBlock):
     """XBlock for coding problems with an in-browser CodeMirror editor and Studio authoring."""
 
+    # Marks this XBlock as gradeable; LMS uses these to record scores.
+    has_score = True
+
+    def max_score(self):
+        """Return the maximum number of points possible (required for has_score=True)."""
+        return float(self.points or 10.0)
+
     # ------------------------------------------------------------------ #
     # Fields — Instructor / Course Author Settings (Scope.settings)       #
     # ------------------------------------------------------------------ #
@@ -94,6 +107,13 @@ class CodingExamXBlock(XBlock):
         default=10.0,
         scope=Scope.settings,
         help="Maximum grade points possible for this problem (must be > 0).",
+    )
+
+    max_attempts = Integer(
+        display_name="Maximum Attempts",
+        default=0,
+        scope=Scope.settings,
+        help="Maximum number of submit attempts allowed per student. 0 means unlimited.",
     )
 
     allowed_languages = List(
@@ -131,6 +151,36 @@ class CodingExamXBlock(XBlock):
         default={},
         scope=Scope.user_state,
         help="Per-language draft code, keyed by language name (python/java/cpp).",
+    )
+
+    attempts = Integer(
+        default=0,
+        scope=Scope.user_state,
+        help="Number of full submissions made by this student.",
+    )
+
+    submission_in_progress = Boolean(
+        default=False,
+        scope=Scope.user_state,
+        help="Guard flag: True while a submission is being processed.",
+    )
+
+    score = Float(
+        default=None,
+        scope=Scope.user_state,
+        help="Score earned on this student's last submission (None if never submitted).",
+    )
+
+    last_submission = Dict(
+        default={},
+        scope=Scope.user_state,
+        help="Metadata about the student's most recent submission (language, score, timestamps).",
+    )
+
+    last_run_results = Dict(
+        default={},
+        scope=Scope.user_state,
+        help="Cached visible-test results from the most recent 'Run' action.",
     )
 
     # ------------------------------------------------------------------ #
@@ -226,6 +276,21 @@ class CodingExamXBlock(XBlock):
             parts.append('</div>')
             sample_tests_html = "".join(parts)
 
+        # Score to display (None → never submitted)
+        score_val = self.score
+        max_attempts_val = int(self.max_attempts or 0)
+        attempts_val = int(self.attempts or 0)
+
+        # Safe last_submission subset for the frontend (never include full code)
+        last_sub = self.last_submission or {}
+        safe_last_submission = {
+            "language": last_sub.get("language", ""),
+            "score": last_sub.get("score"),
+            "passed_count": last_sub.get("passed_count"),
+            "total_count": last_sub.get("total_count"),
+            "submitted_at": last_sub.get("submitted_at", ""),
+        }
+
         # JSON state passed to frontend JS
         init_json = json.dumps({
             "language": current_lang,
@@ -235,6 +300,10 @@ class CodingExamXBlock(XBlock):
             "visible_test_cases": visible_test_cases,
             "display_name": self.display_name or "Coding Problem",
             "points": float(self.points or 10.0),
+            "max_attempts": max_attempts_val,
+            "attempts": attempts_val,
+            "score": score_val,
+            "last_submission": safe_last_submission,
         })
 
         html_content = self.render_template(
@@ -268,6 +337,7 @@ class CodingExamXBlock(XBlock):
             "display_name": self.display_name or "Coding Problem",
             "problem_statement": self.problem_statement or "",
             "points": float(self.points or 10.0),
+            "max_attempts": int(self.max_attempts or 0),
             "allowed_languages": allowed,
             "starter_code": starters,
             "test_cases": [
@@ -320,6 +390,15 @@ class CodingExamXBlock(XBlock):
                 return {"error": "Points must be a positive number greater than 0."}
         except (ValueError, TypeError):
             return {"error": "Points must be a valid number."}
+
+        # 3b. Max Attempts validation
+        raw_max_attempts = data.get("max_attempts", 0)
+        try:
+            max_attempts_val = int(raw_max_attempts)
+            if max_attempts_val < 0:
+                return {"error": "Max attempts cannot be negative."}
+        except (ValueError, TypeError):
+            return {"error": "Max attempts must be a whole number."}
 
         # 4. Allowed Languages validation
         raw_langs = data.get("allowed_languages")
@@ -390,6 +469,7 @@ class CodingExamXBlock(XBlock):
         self.display_name = title
         self.problem_statement = raw_statement
         self.points = points_val
+        self.max_attempts = max_attempts_val
         self.allowed_languages = cleaned_langs
         self.starter_code = updated_starters
         self.test_cases = cleaned_test_cases
@@ -423,8 +503,11 @@ class CodingExamXBlock(XBlock):
     @XBlock.json_handler
     def run_code(self, data, suffix=""):
         """
-        Execute student code against visible test cases using Teerth's runner.
-        Action 'run' filters out hidden test cases and masks inputs/outputs.
+        Execute student code against visible test cases only (action='run').
+
+        Never increments attempts, never publishes a grade.
+        On runner connection/internal errors, returns an error response
+        without touching any user_state.
         """
         language = data.get("language", "")
         code = data.get("code", "")
@@ -439,7 +522,6 @@ class CodingExamXBlock(XBlock):
 
         try:
             client = Judge0Client()
-            # run_submission evaluates visible test cases when action='run'
             result = run_submission(
                 client=client,
                 source_code=code,
@@ -448,17 +530,131 @@ class CodingExamXBlock(XBlock):
                 action="run",
                 max_points=float(self.points or 10.0),
             )
+            # Defensive: strip any hidden-test data before sending to browser
+            result = self._sanitize_results_for_browser(result)
             return result
         except Exception as exc:  # pragma: no cover
-            return {
-                "status": "INTERNAL_ERROR",
-                "is_success": False,
-                "stdout": "",
-                "stderr": str(exc),
-                "compile_output": "",
-                "execution_time": 0.0,
-                "memory": 0,
-                "status_id": 0,
-                "status_description": "Internal Error",
-                "message": str(exc),
-            }
+            return {"error": f"Runner error: {self._sanitize_error(str(exc))}"}
+
+    @XBlock.json_handler
+    def submit_code(self, data, suffix=""):
+        """
+        Full submission against all test cases (visible + hidden).
+
+        On success:
+          - Increments self.attempts
+          - Records self.score and self.last_submission
+          - Publishes grade via self.runtime.publish(...)
+
+        On runner failure (connection error, internal error):
+          - Does NOT increment attempts
+          - Does NOT publish grade
+          - Returns an error JSON
+
+        Hidden test inputs/outputs/actuals are stripped before the
+        response is returned to the browser.
+        """
+        language = data.get("language", "")
+        code = data.get("code", "")
+
+        allowed = self.get_effective_allowed_languages()
+        if language not in allowed:
+            return {"error": f"Language {language!r} is not allowed for this problem."}
+        if not isinstance(code, str) or not code.strip():
+            return {"error": "No code to submit."}
+        if len(code) > MAX_CODE_SIZE:
+            return {"error": f"Code exceeds the {MAX_CODE_SIZE}-character limit."}
+
+        # Guard: reject concurrent submissions
+        if self.submission_in_progress:
+            return {"error": "A submission is already in progress. Please wait."}
+
+        # Guard: attempt limit
+        max_att = int(self.max_attempts or 0)
+        cur_att = int(self.attempts or 0)
+        if max_att > 0 and cur_att >= max_att:
+            return {"error": f"Attempt limit reached ({max_att} attempts used)."}
+
+        self.submission_in_progress = True
+        try:
+            client = Judge0Client()
+            result = run_submission(
+                client=client,
+                source_code=code,
+                language=language,
+                test_cases_data=self.test_cases or DEFAULT_TEST_CASES,
+                action="submit",
+                max_points=float(self.points or 10.0),
+            )
+        except Exception as exc:  # pragma: no cover
+            # Runner failure — do NOT consume an attempt or publish grade
+            self.submission_in_progress = False
+            return {"error": f"Runner error: {self._sanitize_error(str(exc))}"}
+        finally:
+            self.submission_in_progress = False
+
+        # Runner returned a valid result — record state and publish grade
+        earned_score = float(result.get("score", 0.0))
+        max_points = float(self.points or 10.0)
+
+        self.attempts = cur_att + 1
+        self.score = earned_score
+        self.last_submission = {
+            "language": language,
+            "score": earned_score,
+            "max_points": max_points,
+            "passed_count": result.get("passed_count", 0),
+            "total_count": result.get("total_count", 0),
+            "submitted_at": datetime.datetime.utcnow().isoformat() + "Z",
+        }
+
+        # Publish grade to the LMS gradebook
+        self.runtime.publish(self, "grade", {"value": earned_score, "max_value": max_points})
+
+        # Security: strip hidden-test sensitive fields before returning to browser
+        result = self._sanitize_results_for_browser(result)
+
+        # Attach updated attempt info to the response
+        result["attempts"] = int(self.attempts)
+        result["max_attempts"] = max_att
+        result["score"] = earned_score
+        result["max_points"] = max_points
+        return result
+
+    # ------------------------------------------------------------------ #
+    # Private helpers                                                     #
+    # ------------------------------------------------------------------ #
+
+    def _sanitize_results_for_browser(self, result):
+        """
+        Return a copy of `result` with hidden test-case sensitive data stripped.
+
+        Hidden-test `input`, `expected_output`, and `actual_output` are replaced
+        with None. `compilation_error` and `error_message` strings are sanitised
+        (server paths stripped, length capped).
+        """
+        result = dict(result)
+        sanitized_results = []
+        for tc in result.get("results", []):
+            tc = dict(tc)
+            if tc.get("is_hidden", False):
+                tc["input"] = None
+                tc["expected_output"] = None
+                tc["actual_output"] = None
+            if tc.get("error_message"):
+                tc["error_message"] = self._sanitize_error(tc["error_message"])
+            sanitized_results.append(tc)
+        result["results"] = sanitized_results
+
+        if result.get("compilation_error"):
+            result["compilation_error"] = self._sanitize_error(result["compilation_error"])
+
+        return result
+
+    @staticmethod
+    def _sanitize_error(msg):
+        """Strip server-local paths and cap length of an error string."""
+        msg = _SERVER_PATH_RE.sub("[path]", str(msg))
+        if len(msg) > MAX_ERROR_MSG_LENGTH:
+            msg = msg[:MAX_ERROR_MSG_LENGTH] + "… [truncated]"
+        return msg

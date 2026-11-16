@@ -13,10 +13,11 @@ function CodingExamStudioXBlock(runtime, element) {
   // ------------------------------------------------------------------ //
   // 1. Scoped DOM selectors                                             //
   // ------------------------------------------------------------------ //
-  var titleInput     = element.querySelector(".ce-studio-title");
-  var stmtTextarea   = element.querySelector(".ce-studio-statement");
-  var pointsInput    = element.querySelector(".ce-studio-points");
-  var langCheckboxes = element.querySelectorAll(".ce-lang-cb");
+  var titleInput      = element.querySelector(".ce-studio-title");
+  var stmtTextarea    = element.querySelector(".ce-studio-statement");
+  var pointsInput     = element.querySelector(".ce-studio-points");
+  var maxAttemptsInput = element.querySelector(".ce-studio-max-attempts");
+  var langCheckboxes  = element.querySelectorAll(".ce-lang-cb");
   var tabButtons     = element.querySelectorAll(".ce-tab-btn");
   var starterPanes   = element.querySelectorAll(".ce-starter-pane");
   var tcListEl       = element.querySelector(".ce-test-cases-list");
@@ -32,6 +33,7 @@ function CodingExamStudioXBlock(runtime, element) {
     display_name: "Coding Problem",
     problem_statement: "",
     points: 10.0,
+    max_attempts: 0,
     allowed_languages: ["python"],
     starter_code: {},
     test_cases: [{ input: "", expected_output: "", is_hidden: false }],
@@ -50,6 +52,9 @@ function CodingExamStudioXBlock(runtime, element) {
   titleInput.value = initData.display_name || "Coding Problem";
   stmtTextarea.value = initData.problem_statement || "";
   pointsInput.value = (initData.points !== undefined) ? initData.points : 10.0;
+  if (maxAttemptsInput) {
+    maxAttemptsInput.value = (initData.max_attempts !== undefined) ? initData.max_attempts : 0;
+  }
 
   // Populate allowed languages
   var allowedSet = new Set(initData.allowed_languages || ["python"]);
@@ -202,6 +207,16 @@ function CodingExamStudioXBlock(runtime, element) {
       return;
     }
 
+    // Collect Max Attempts
+    var maxAttempts = 0;
+    if (maxAttemptsInput) {
+      maxAttempts = parseInt(maxAttemptsInput.value, 10);
+      if (isNaN(maxAttempts) || maxAttempts < 0) {
+        showError("Max attempts must be 0 or a positive whole number.");
+        return;
+      }
+    }
+
     // Collect Allowed Languages
     var selectedLangs = [];
     langCheckboxes.forEach(function (cb) {
@@ -254,6 +269,7 @@ function CodingExamStudioXBlock(runtime, element) {
       display_name: title,
       problem_statement: stmtTextarea.value,
       points: points,
+      max_attempts: maxAttempts,
       allowed_languages: selectedLangs,
       starter_code: starterPayload,
       test_cases: testCasesPayload,
