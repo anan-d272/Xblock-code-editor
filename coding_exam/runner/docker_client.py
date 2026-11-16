@@ -23,11 +23,13 @@ class DockerSandboxClient:
         cpu_limit: str = "0.5",
         memory_limit: str = "128m",
         default_timeout: int = 10,
+        max_output_bytes: int = 1048576,
     ):
         self.image_name = image_name or self.IMAGE_NAME
         self.cpu_limit = cpu_limit
         self.memory_limit = memory_limit
         self.default_timeout = default_timeout
+        self.max_output_bytes = max_output_bytes
 
     def execute(
         self,
@@ -107,6 +109,7 @@ class DockerSandboxClient:
                 f"/sandbox/{src_filename}",
                 "/sandbox/input.in",
                 str(timeout_sec),
+                str(self.max_output_bytes),
             ]
 
             start_t = time.time()
@@ -131,6 +134,20 @@ class DockerSandboxClient:
                     memory=0,
                     status_id=6,
                     status_description="Compilation Error",
+                )
+
+            # Exit code 141 indicates SIGPIPE (output exceeded maximum allowed bytes)
+            if proc.returncode == 141:
+                return ExecutionResult(
+                    status="OUTPUT_LIMIT_EXCEEDED",
+                    is_success=False,
+                    stdout=proc.stdout[:self.max_output_bytes],
+                    stderr="Program exceeded maximum output size limit.",
+                    compile_output="",
+                    execution_time=elapsed,
+                    memory=0,
+                    status_id=14,
+                    status_description="Output Limit Exceeded",
                 )
 
             # Exit code 137 indicates SIGKILL / Out of Memory / Timeout

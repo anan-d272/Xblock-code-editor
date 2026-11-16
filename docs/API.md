@@ -167,3 +167,173 @@ To preserve exam integrity:
 | **Python** | `"python"`, `"python3"`, `"py"` | 71 | Python 3.8.1 |
 | **C++** | `"cpp"`, `"c++"` | 54 | GCC 9.2.0 |
 | **Java** | `"java"` | 62 | OpenJDK 13.0.1 (Class must be `public class Main`) |
+
+---
+
+## 6. Open edX Gradebook Publishing Contract
+
+Official grading is exclusively triggered when the student executes `submit_code`. The `run_code` action **never** publishes grades.
+
+### Grade Publishing Mechanism
+
+The XBlock declares `has_score = True` and defines `max_score()` returning `self.max_points`. During `submit_code`, the backend invokes:
+
+```python
+self.runtime.publish(
+    self,
+    "grade",
+    {
+        "value": round(score, 2),
+        "max_value": float(max_points),
+    }
+)
+```
+
+### Grade Calculation Formula
+
+$$\text{Score} = \left(\frac{\text{Passed Test Cases}}{\text{Total Test Cases}}\right) \times \text{Maximum Problem Points}$$
+
+- Total test cases include both visible and hidden test cases.
+- If total test cases is 0 or compilation fails, score published is `0.0`.
+- Scores are published as floating-point values rounded to two decimal places.
+
+---
+
+## 7. Student Attempt & Submission History Storage
+
+Student submissions are persisted in `Scope.user_state` so they are scoped per learner per problem unit.
+
+### Data Model
+
+1. **`attempts` (`Integer`, default `0`):** Number of official exam submissions made by the student.
+2. **`last_submission` (`Dict`, default `{}`):** Snapshot of the most recent evaluation:
+   ```json
+   {
+     "attempt_number": 1,
+     "timestamp": "2026-11-16T12:00:00Z",
+     "user_id": "student_101",
+     "language": "python",
+     "score": 80.0,
+     "max_points": 100.0,
+     "percentage": 80.0,
+     "passed_count": 4,
+     "total_count": 5,
+     "status": "success",
+     "results": [ ... ]
+   }
+   ```
+3. **`submission_history` (`List[Dict]`, default `[]`):** Chronological log of the student's submissions (bounded to the last 10 attempts to optimize state storage).
+
+### Endpoint: `get_submission_history`
+
+- **Method:** `POST` / `GET` JSON handler.
+- **Response:**
+  ```json
+  {
+    "status": "success",
+    "attempts": 2,
+    "last_submission": { ... },
+    "submission_history": [ ... ]
+  }
+  ```
+
+---
+
+## 8. Integrity & Anti-Cheating Event Tracking
+
+To monitor academic integrity during online exams, the XBlock tracks clipboard activity, paste events, and abnormal code volume insertions.
+
+### Endpoint: `report_integrity`
+
+Frontend event listeners (such as CodeMirror paste hooks) post integrity events to this endpoint.
+
+#### Request Payload
+```json
+{
+  "event_type": "paste",
+  "char_count": 142,
+  "language": "python",
+  "details": "Pasted 142 characters into editor"
+}
+```
+
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `event_type` | `string` | Yes | `"paste"` or `"large_insertion"` |
+| `char_count` | `integer` | No | Number of characters inserted (default `0`) |
+| `language` | `string` | No | Programming language active in editor |
+| `details` | `string` | No | Diagnostic context or frontend note |
+
+#### Response (`200 OK`)
+```json
+{
+  "status": "success",
+  "paste_count": 3,
+  "large_insertions": 1,
+  "is_flagged": false,
+  "message": "Integrity event recorded."
+}
+```
+
+### Suspicious Activity Thresholds & Instructor Flags
+
+The XBlock tracks:
+- `paste_count` (`Integer`): Cumulative number of paste actions.
+- `large_insertions` (`Integer`): Cumulative insertions with `char_count >= 100`.
+- `is_flagged` (`Boolean`): Set to `true` when:
+  - `paste_count >= max_paste_threshold` (default `3`), OR
+  - `large_insertions >= large_insertion_threshold` (default `2`).
+
+### Endpoint: `get_integrity_summary`
+
+Provides instructors with an audit summary of the learner's session:
+
+```json
+{
+  "status": "success",
+  "is_flagged": true,
+  "paste_count": 4,
+  "large_insertions": 2,
+  "total_events": 6,
+  "max_paste_threshold": 3,
+  "large_insertion_threshold": 2,
+  "recent_events": [
+    {
+      "event_type": "paste",
+      "char_count": 120,
+      "language": "python",
+      "timestamp": "2026-11-16T12:05:00+00:00"
+    }
+  ]
+}
+```
+
+---
+
+## 9. Docker Sandbox Hardening & Security Guarantees
+
+When local execution is used (via `coding-exam-sandbox:latest` / `DockerSandboxClient`), untrusted student code is isolated with multi-layer host defenses:
+
+1. **Zero Network Connectivity (`--network none`):**
+   - Socket creation to loopback or external addresses is blocked at kernel level.
+   - Prevents outbound data exfiltration and credential leaks.
+
+2. **Unprivileged Container User (`--user 1001:1001`):**
+   - Runs as non-root user `sandboxuser`.
+   - Cannot modify system files or mount paths.
+
+3. **Read-Only Volume Mounts (`:ro`):**
+   - The student source directory on the host is mounted read-only.
+   - Scratch writes occur only in ephemeral `/sandbox_run`.
+
+4. **Strict CPU & Memory Limits:**
+   - `--cpus 0.5`: Enforces hard CFS quota to prevent CPU starvation.
+   - `-m 128m`: Enforces kernel cgroup memory limits to prevent host OOM.
+
+5. **Output Size Clamping (`head -c 1048576`):**
+   - Standard output is piped through `head -c 1048576` (1MB limit).
+   - If code executes an infinite print loop, the pipe closes, sending `SIGPIPE` / `BrokenPipeError` to terminate the process before host disk or memory buffers fill up.
+
+6. **Process Kill Timeout:**
+   - Linux `timeout -s SIGKILL` ensures unresponsive tasks are forcefully destroyed after the configured timeout.
+

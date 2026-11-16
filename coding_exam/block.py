@@ -1,15 +1,10 @@
 """
-Coding Exam XBlock — Days 5 & 6: Run/Submit end-to-end, grading, clipboard protection.
+Coding Exam XBlock — Days 3 to 6: editor, test-case evaluation, grade publishing,
+attempt storage, and integrity monitoring.
 
-Allows instructors to create coding problems with:
-- Display name and problem statement
-- Points (grading weight), max attempts
-- Allowed programming languages (subset of python, java, cpp)
-- Per-language starter code templates
-- Visible and hidden test cases
-
-Student code never runs on the LMS/CMS server; all execution is handled by
-Teerth's execution client and test case runner.
+Student view serves a CodeMirror 6 editor. Per-language drafts, submissions,
+and integrity audit trails are persisted in Scope.user_state.
+Execution and grading are orchestrated via the runner module.
 """
 import html
 import json
@@ -22,7 +17,14 @@ from web_fragments.fragment import Fragment
 from xblock.core import XBlock
 from xblock.fields import Boolean, Dict, Float, Integer, List, Scope, String
 
-from .runner import Judge0Client, run_submission
+from .runner import (
+    Judge0Client,
+    run_submission,
+    get_integrity_summary as runner_get_integrity_summary,
+    handle_integrity_event as runner_handle_integrity_event,
+    handle_run_request,
+    handle_submit_request,
+)
 
 # Languages supported by the execution runner.
 SUPPORTED_LANGUAGES = ("python", "java", "cpp")
@@ -82,14 +84,14 @@ DEFAULT_TEST_CASES = [
 
 
 class CodingExamXBlock(XBlock):
-    """XBlock for coding problems with an in-browser CodeMirror editor and Studio authoring."""
+    """XBlock for coding problems with an in-browser CodeMirror editor, grading, and integrity audit."""
 
     # Marks this XBlock as gradeable; LMS uses these to record scores.
     has_score = True
 
     def max_score(self):
         """Return the maximum number of points possible (required for has_score=True)."""
-        return float(self.points or 10.0)
+        return float(getattr(self, "points", 0.0) or getattr(self, "max_points", 10.0) or 10.0)
 
     # ------------------------------------------------------------------ #
     # Fields — Instructor / Course Author Settings (Scope.settings)       #
@@ -144,6 +146,32 @@ class CodingExamXBlock(XBlock):
         help="List of test cases: [{'input': str, 'expected_output': str, 'is_hidden': bool}].",
     )
 
+    max_points = Float(
+        display_name="Max Score",
+        default=100.0,
+        scope=Scope.settings,
+        help="Maximum possible score for this coding problem.",
+    )
+
+    test_cases = List(
+        display_name="Test Cases",
+        default=[],
+        scope=Scope.settings,
+        help="List of problem test cases configured by course author.",
+    )
+
+    max_paste_threshold = Integer(
+        default=3,
+        scope=Scope.settings,
+        help="Number of paste events before an attempt is flagged for review.",
+    )
+
+    large_insertion_threshold = Integer(
+        default=150,
+        scope=Scope.settings,
+        help="Character length threshold to count as a large sudden insertion.",
+    )
+
     # ------------------------------------------------------------------ #
     # Fields — Per-Student State (Scope.user_state)                       #
     # ------------------------------------------------------------------ #
@@ -190,6 +218,12 @@ class CodingExamXBlock(XBlock):
         help="Cached visible-test results from the most recent 'Run' action.",
     )
 
+    submission_history = List(
+        default=[],
+        scope=Scope.user_state,
+        help="History of past final submissions.",
+    )
+
     integrity_events = List(
         default=[],
         scope=Scope.user_state,
@@ -200,6 +234,24 @@ class CodingExamXBlock(XBlock):
         default={},
         scope=Scope.user_state,
         help="Running totals of each integrity event type for this student.",
+    )
+
+    paste_count = Integer(
+        default=0,
+        scope=Scope.user_state,
+        help="Total paste events recorded for this student.",
+    )
+
+    large_insertions = Integer(
+        default=0,
+        scope=Scope.user_state,
+        help="Total large code insertion events recorded for this student.",
+    )
+
+    is_flagged = Boolean(
+        default=False,
+        scope=Scope.user_state,
+        help="Whether this student's session has been flagged for instructor review.",
     )
 
     def _is_staff(self):
@@ -683,6 +735,11 @@ class CodingExamXBlock(XBlock):
             "integrity_counts": dict(self.integrity_counts or {}),
         }
 
+        # Store in bounded submission history
+        history = list(getattr(self, "submission_history", []) or [])
+        history.append(dict(self.last_submission))
+        self.submission_history = history[-10:]
+
         # Publish grade to the LMS gradebook
         self.runtime.publish(self, "grade", {"value": earned_score, "max_value": max_points})
 
@@ -741,6 +798,31 @@ class CodingExamXBlock(XBlock):
         self.integrity_events = stored
         self.integrity_counts = counts
         return {"status": "ok"}
+
+    @XBlock.json_handler
+    def report_integrity(self, data, suffix=""):
+        """
+        Record suspicious events (pastes, large insertions) for instructor audit.
+        """
+        return runner_handle_integrity_event(self, data)
+
+    @XBlock.json_handler
+    def get_integrity_summary(self, data, suffix=""):
+        """
+        Retrieve integrity summary and suspicious flags for instructor view.
+        """
+        return runner_get_integrity_summary(self)
+
+    @XBlock.json_handler
+    def get_submission_history(self, data, suffix=""):
+        """
+        Retrieve student's last submission and history.
+        """
+        return {
+            "attempts": int(getattr(self, "attempts", 0) or 0),
+            "last_submission": getattr(self, "last_submission", {}) or {},
+            "history": getattr(self, "submission_history", []) or [],
+        }
 
     # ------------------------------------------------------------------ #
     # Private helpers                                                     #
