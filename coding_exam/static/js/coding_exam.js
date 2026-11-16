@@ -15,6 +15,13 @@ function CodingExamXBlock(runtime, element) {   // eslint-disable-line no-unused
   "use strict";
 
   /* ------------------------------------------------------------------ *
+   * Constants                                                          *
+   * ------------------------------------------------------------------ */
+  var LARGE_INSERTION_THRESHOLD = 40;   // characters — flag as a paste-like insertion
+  var INTEGRITY_DEBOUNCE_MS     = 3000; // batch window before POSTing integrity events
+  var NOTICE_DISPLAY_MS         = 3000; // ms the clipboard notice stays visible
+
+  /* ------------------------------------------------------------------ *
    * 1. Default starter code fallback                                   *
    * ------------------------------------------------------------------ */
   var DEFAULT_STARTER = {
@@ -63,6 +70,7 @@ function CodingExamXBlock(runtime, element) {   // eslint-disable-line no-unused
   var submitBtn         = element.querySelector(".ce-submit-btn");
   var runMsg            = element.querySelector(".ce-run-msg");
   var attemptsInfo      = element.querySelector(".ce-attempts-info");
+  var clipboardNotice   = element.querySelector(".ce-clipboard-notice");
   var runPanel          = element.querySelector(".ce-run-panel");
   var runResultsBody    = element.querySelector(".ce-run-results-body");
   var submitPanel       = element.querySelector(".ce-submit-panel");
@@ -255,6 +263,23 @@ function CodingExamXBlock(runtime, element) {   // eslint-disable-line no-unused
           var code = view.state.doc.toString();
           drafts[currentLang] = code;
           debouncedSave(currentLang, code);
+
+          // Day 6: detect large programmatic insertions via CM transaction
+          update.transactions.forEach(function (tr) {
+            if (!tr.docChanged) { return; }
+            tr.changes.iterChanges(function (fromA, toA, fromB, toB, inserted) {
+              var insertedLen = inserted.length;
+              // Only count user-originated large insertions (not undo, redo, language-switch)
+              if (!tr.annotation(CM.Transaction && CM.Transaction.userEvent)) { return; }
+              var userEvt = tr.annotation(CM.Transaction.userEvent) || "";
+              var isUserInput = userEvt.indexOf("input") !== -1
+                             || userEvt.indexOf("paste") !== -1
+                             || userEvt.indexOf("drop")  !== -1;
+              if (isUserInput && insertedLen > LARGE_INSERTION_THRESHOLD) {
+                queueIntegrityEvent("large_insertion", { inserted_length: insertedLen });
+              }
+            });
+          });
         }),
       ],
     }),
@@ -282,7 +307,154 @@ function CodingExamXBlock(runtime, element) {   // eslint-disable-line no-unused
   });
 
   /* ------------------------------------------------------------------ *
-   * 9. Result rendering helpers                                        *
+   * 9. Day 6 — Clipboard / paste / drop blocking on the editor div    *
+   * ------------------------------------------------------------------ */
+
+  /** Show a brief notice message inside the XBlock. */
+  function showClipboardNotice(msg) {
+    if (!clipboardNotice) { return; }
+    clipboardNotice.textContent = msg;
+    clipboardNotice.classList.add("visible");
+    clearTimeout(clipboardNotice._hideTimer);
+    clipboardNotice._hideTimer = setTimeout(function () {
+      clipboardNotice.classList.remove("visible");
+    }, NOTICE_DISPLAY_MS);
+  }
+
+  /** Block an event and log it. */
+  function blockEditorEvent(e, eventType, metadata) {
+    e.preventDefault();
+    e.stopPropagation();
+    var msgs = {
+      paste_attempt  : "Paste is disabled in the exam editor.",
+      copy_attempt   : "Copy is disabled in the exam editor.",
+      cut_attempt    : "Cut is disabled in the exam editor.",
+      drop_attempt   : "Dropping content is disabled in the exam editor.",
+      large_insertion: "Large insertions are disabled in the exam editor.",
+    };
+    showClipboardNotice(msgs[eventType] || "That action is disabled in the exam editor.");
+    queueIntegrityEvent(eventType, metadata || {});
+  }
+
+  // Paste
+  editorEl.addEventListener("paste", function (e) {
+    blockEditorEvent(e, "paste_attempt");
+  }, true);
+
+  // Copy
+  editorEl.addEventListener("copy", function (e) {
+    blockEditorEvent(e, "copy_attempt");
+  }, true);
+
+  // Cut
+  editorEl.addEventListener("cut", function (e) {
+    blockEditorEvent(e, "cut_attempt");
+  }, true);
+
+  // Drop
+  editorEl.addEventListener("drop", function (e) {
+    blockEditorEvent(e, "drop_attempt");
+  }, true);
+  editorEl.addEventListener("dragover", function (e) {
+    e.preventDefault();   // block drop target activation
+  }, true);
+  editorEl.addEventListener("dragstart", function (e) {
+    e.preventDefault();
+  }, true);
+
+  // Middle-click paste (Linux primary selection)
+  editorEl.addEventListener("mousedown", function (e) {
+    if (e.button === 1) {
+      e.preventDefault();
+      showClipboardNotice("Middle-click paste is disabled in the exam editor.");
+      queueIntegrityEvent("paste_attempt", { source: "middle_click" });
+    }
+  }, true);
+
+  // beforeinput — catches virtual keyboard paste, autocomplete replacements, etc.
+  editorEl.addEventListener("beforeinput", function (e) {
+    var blocked = {
+      insertFromPaste       : "paste_attempt",
+      insertFromDrop        : "drop_attempt",
+      insertFromYank        : "paste_attempt",
+      insertReplacementText : "paste_attempt",
+      deleteByCut           : "cut_attempt",
+    };
+    if (blocked[e.inputType]) {
+      blockEditorEvent(e, blocked[e.inputType]);
+    }
+  }, true);
+
+  // Keyboard shortcuts — block Ctrl/Cmd+V/C/X, Shift+Insert, Ctrl+Insert, Shift+Delete
+  editorEl.addEventListener("keydown", function (e) {
+    var ctrl  = e.ctrlKey || e.metaKey;
+    var shift = e.shiftKey;
+    var key   = e.key;
+
+    // Allow Tab, Enter, Backspace, Arrows, Ctrl+Z, Ctrl+Y, Ctrl+A
+    if (
+      key === "Tab" || key === "Enter" || key === "Backspace" || key === "Delete" ||
+      key === "ArrowLeft" || key === "ArrowRight" || key === "ArrowUp" || key === "ArrowDown"
+    ) { return; }
+    if (ctrl && (key === "z" || key === "Z" || key === "y" || key === "Y" || key === "a" || key === "A")) {
+      return;
+    }
+
+    if (ctrl && (key === "v" || key === "V")) {
+      blockEditorEvent(e, "paste_attempt", { source: "keyboard_ctrl_v" });
+    } else if (ctrl && (key === "c" || key === "C")) {
+      blockEditorEvent(e, "copy_attempt", { source: "keyboard_ctrl_c" });
+    } else if (ctrl && (key === "x" || key === "X")) {
+      blockEditorEvent(e, "cut_attempt", { source: "keyboard_ctrl_x" });
+    } else if (shift && key === "Insert") {
+      blockEditorEvent(e, "paste_attempt", { source: "keyboard_shift_insert" });
+    } else if (ctrl && key === "Insert") {
+      blockEditorEvent(e, "copy_attempt", { source: "keyboard_ctrl_insert" });
+    } else if (shift && key === "Delete") {
+      blockEditorEvent(e, "cut_attempt", { source: "keyboard_shift_delete" });
+    } else if (ctrl && shift && (key === "v" || key === "V")) {
+      blockEditorEvent(e, "paste_attempt", { source: "keyboard_ctrl_shift_v" });
+    }
+  }, true);
+
+  /* ------------------------------------------------------------------ *
+   * 10. Integrity event queue — batch / debounce before POSTing        *
+   * ------------------------------------------------------------------ */
+  var integrityUrl      = runtime.handlerUrl(element, "log_integrity_event");
+  var integrityQueue    = [];
+  var integrityTimer    = null;
+
+  function flushIntegrityEvents() {
+    if (integrityQueue.length === 0) { return; }
+    var payload = integrityQueue.slice();
+    integrityQueue = [];
+    fetch(integrityUrl, {
+      method  : "POST",
+      headers : { "Content-Type": "application/json" },
+      body    : JSON.stringify(payload),
+    }).catch(function (err) {
+      console.warn("[CodingExamXBlock] integrity event POST failed:", err);
+    });
+  }
+
+  function queueIntegrityEvent(eventType, metadata) {
+    integrityQueue.push({
+      event_type : eventType,
+      timestamp  : new Date().toISOString(),
+      metadata   : metadata || {},
+    });
+    // Flush if batch is large enough, else debounce
+    if (integrityQueue.length >= 10) {
+      clearTimeout(integrityTimer);
+      flushIntegrityEvents();
+    } else {
+      clearTimeout(integrityTimer);
+      integrityTimer = setTimeout(flushIntegrityEvents, INTEGRITY_DEBOUNCE_MS);
+    }
+  }
+
+  /* ------------------------------------------------------------------ *
+   * 11. Result rendering helpers                                       *
    * ------------------------------------------------------------------ */
   function buildScoreSummaryHTML(passed, total, score, maxPoints) {
     var scoreStr = (typeof score === "number" ? score.toFixed(2) : "?");
@@ -431,6 +603,10 @@ function CodingExamXBlock(runtime, element) {   // eslint-disable-line no-unused
     submitPanel.classList.remove("visible");
     submitScoreSummary.innerHTML = "";
     submitResultsBody.innerHTML = "";
+
+    // Flush any pending integrity events before submitting
+    clearTimeout(integrityTimer);
+    flushIntegrityEvents();
 
     fetch(submitUrl, {
       method  : "POST",

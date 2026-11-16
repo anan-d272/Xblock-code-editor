@@ -34,6 +34,13 @@ MAX_STATEMENT_LENGTH = 50_000   # 50k characters
 MAX_TEST_CASES = 50             # Up to 50 test cases per problem
 MAX_TEST_CASE_IO_SIZE = 10_240  # 10 KB per input/output
 
+# Integrity / security limits
+MAX_INTEGRITY_EVENTS = 200      # Cap stored integrity event log
+MAX_EVENTS_PER_POST = 10        # Rate-limit: max events accepted in a single POST
+ALLOWED_INTEGRITY_EVENT_TYPES = frozenset({
+    "paste_attempt", "copy_attempt", "cut_attempt", "drop_attempt", "large_insertion",
+})
+
 # Sanitisation helpers
 _SERVER_PATH_RE = re.compile(r"/openedx/[^\s]*")
 MAX_ERROR_MSG_LENGTH = 2000     # Cap compiler/runtime error messages sent to browser
@@ -183,6 +190,38 @@ class CodingExamXBlock(XBlock):
         help="Cached visible-test results from the most recent 'Run' action.",
     )
 
+    integrity_events = List(
+        default=[],
+        scope=Scope.user_state,
+        help="Log of integrity events (paste/copy/drop) reported by the editor. Capped at 200.",
+    )
+
+    integrity_counts = Dict(
+        default={},
+        scope=Scope.user_state,
+        help="Running totals of each integrity event type for this student.",
+    )
+
+    def _is_staff(self):
+        """
+        Return True if the current user is a course staff member or admin.
+
+        Uses the documented XBlock user service (Sumac / Open edX Redwood+).
+        Falls back to False if the service is unavailable so students are
+        never accidentally granted staff access.
+        """
+        try:
+            user_service = self.runtime.service(self, "user")
+            if user_service is None:
+                return False
+            user = user_service.get_current_user()
+            return bool(
+                user.opt_attrs.get("edx-platform.user_is_staff", False)
+                or user.opt_attrs.get("edx-platform.user_is_superuser", False)
+            )
+        except Exception:  # pragma: no cover — runtime not available in unit tests
+            return False
+
     # ------------------------------------------------------------------ #
     # Helpers                                                            #
     # ------------------------------------------------------------------ #
@@ -306,6 +345,40 @@ class CodingExamXBlock(XBlock):
             "last_submission": safe_last_submission,
         })
 
+        # Staff-only integrity panel (hidden from students)
+        integrity_html = ""
+        if self._is_staff():
+            counts = dict(self.integrity_counts or {})
+            events = list(self.integrity_events or [])[-10:]  # last 10 only
+            rows = "".join(
+                f"<tr><td>{html.escape(str(k))}</td><td>{html.escape(str(v))}</td></tr>"
+                for k, v in counts.items()
+            )
+            event_rows = "".join(
+                f"<tr><td>{html.escape(str(e.get('event_type', '')))}</td>"
+                f"<td>{html.escape(str(e.get('timestamp', '')))}</td></tr>"
+                for e in events
+            )
+            integrity_html = f"""
+<div class="ce-integrity-summary">
+  <div class="ce-integrity-title">&#128274; Integrity Summary (Staff Only)</div>
+  <p class="ce-integrity-note">
+    Clipboard blocking is a deterrent, not a guarantee. Determined students can
+    still paste through accessibility tools or browser menus. Use this data as
+    a signal alongside other academic-integrity checks.
+  </p>
+  <table class="ce-integrity-table">
+    <caption>Event Totals</caption>
+    <thead><tr><th>Event Type</th><th>Count</th></tr></thead>
+    <tbody>{rows if rows else "<tr><td colspan='2'>No events recorded.</td></tr>"}</tbody>
+  </table>
+  <table class="ce-integrity-table" style="margin-top:8px">
+    <caption>Last 10 Events</caption>
+    <thead><tr><th>Type</th><th>Timestamp</th></tr></thead>
+    <tbody>{event_rows if event_rows else "<tr><td colspan='2'>No events recorded.</td></tr>"}</tbody>
+  </table>
+</div>"""
+
         html_content = self.render_template(
             "student_view.html",
             DISPLAY_NAME=html.escape(self.display_name or "Coding Problem"),
@@ -314,6 +387,7 @@ class CodingExamXBlock(XBlock):
             HAS_STATEMENT="visible" if statement_text.strip() else "hidden",
             SAMPLE_TESTS=sample_tests_html,
             INIT_DATA=init_json,
+            INTEGRITY_SUMMARY=integrity_html,
         )
 
         frag = Fragment(html_content)
@@ -606,6 +680,7 @@ class CodingExamXBlock(XBlock):
             "passed_count": result.get("passed_count", 0),
             "total_count": result.get("total_count", 0),
             "submitted_at": datetime.datetime.utcnow().isoformat() + "Z",
+            "integrity_counts": dict(self.integrity_counts or {}),
         }
 
         # Publish grade to the LMS gradebook
@@ -620,6 +695,52 @@ class CodingExamXBlock(XBlock):
         result["score"] = earned_score
         result["max_points"] = max_points
         return result
+
+    @XBlock.json_handler
+    def log_integrity_event(self, data, suffix=""):
+        """
+        Receive integrity signals from the student editor (paste/copy/drop attempts).
+
+        Validates event types against an allowlist, rate-limits to
+        MAX_EVENTS_PER_POST per request, and caps the stored log at
+        MAX_INTEGRITY_EVENTS entries.
+        """
+        events = data if isinstance(data, list) else [data]
+
+        # Rate limit: ignore if too many events in one POST
+        if len(events) > MAX_EVENTS_PER_POST:
+            events = events[:MAX_EVENTS_PER_POST]
+
+        stored = list(self.integrity_events or [])
+        counts = dict(self.integrity_counts or {})
+
+        for evt in events:
+            if not isinstance(evt, dict):
+                continue
+            event_type = str(evt.get("event_type", ""))
+            if event_type not in ALLOWED_INTEGRITY_EVENT_TYPES:
+                continue  # silently drop unknown event types
+
+            timestamp = str(evt.get("timestamp", ""))
+            metadata = evt.get("metadata", {})
+            if not isinstance(metadata, dict):
+                metadata = {}
+
+            record = {
+                "event_type": event_type,
+                "timestamp": timestamp,
+                "metadata": {k: v for k, v in metadata.items() if isinstance(k, str)},
+            }
+            stored.append(record)
+            counts[event_type] = counts.get(event_type, 0) + 1
+
+        # Cap the event log
+        if len(stored) > MAX_INTEGRITY_EVENTS:
+            stored = stored[-MAX_INTEGRITY_EVENTS:]
+
+        self.integrity_events = stored
+        self.integrity_counts = counts
+        return {"status": "ok"}
 
     # ------------------------------------------------------------------ #
     # Private helpers                                                     #

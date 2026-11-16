@@ -240,6 +240,21 @@
   margin-left: auto;
 }
 
+/* ── Clipboard notice ── */
+.ce-clipboard-notice {
+  display: none;
+  background: #fff8c5;
+  border: 1px solid #d4a72c;
+  color: #633500;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 0;
+  text-align: center;
+  transition: opacity 0.2s;
+}
+.ce-clipboard-notice.visible { display: block; }
+
 /* ── Results panels (Run & Submit) ── */
 .ce-results-panel {
   display: none;
@@ -380,3 +395,44 @@
   color: #57606a;
   font-size: 13px;
 }
+
+/* ── Staff-only integrity summary ── */
+.ce-integrity-summary {
+  border-top: 2px dashed #0969da;
+  padding: 12px 16px;
+  background: #f0f7ff;
+}
+.ce-integrity-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0969da;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+.ce-integrity-note {
+  font-size: 12px;
+  color: #57606a;
+  margin-bottom: 10px;
+}
+.ce-integrity-table {
+  border-collapse: collapse;
+  font-size: 12px;
+  width: 100%;
+  max-width: 500px;
+}
+.ce-integrity-table th,
+.ce-integrity-table td {
+  border: 1px solid #c8dff8;
+  padding: 4px 10px;
+  text-align: left;
+}
+.ce-integrity-table caption {
+  caption-side: top;
+  font-size: 11px;
+  font-weight: 600;
+  color: #57606a;
+  text-align: left;
+  padding-bottom: 3px;
+}
+.ce-integrity-table th { background: #ddf4ff; }
