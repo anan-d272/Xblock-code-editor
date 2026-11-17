@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tutor-contrib-coding-exam"
+version = "0.1.0"
+description = "Tutor plugin for Open edX Coding Exam XBlock and Execution Service"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "tutor>=19,<20"
+]
+keywords = [
+    "tutor",
+    "openedx",
+    "xblock",
+    "coding-exam",
+    "judge0",
+    "docker-sandbox"
+]
+
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Framework :: Django",
+    "Operating System :: OS Independent"
+]
+
+[project.entry-points."tutor.plugin.v1"]
+coding_exam = "tutor_coding_exam.plugin"
+
+[tool.setuptools.packages.find]
+include = ["tutor_coding_exam*"]
