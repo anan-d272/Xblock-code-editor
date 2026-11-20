@@ -48,7 +48,11 @@ hooks.Filters.ENV_PATCHES.add_items(
         # Add coding_exam to CMS ADVANCED_COMPONENT_TYPES so it appears in Studio
         (
             "openedx-cms-common-settings",
-            "ADVANCED_COMPONENT_TYPES += [\"coding_exam\"]\n",
+            """
+ADVANCED_COMPONENT_TYPES = list(globals().get("ADVANCED_COMPONENT_TYPES", []))
+if "coding_exam" not in ADVANCED_COMPONENT_TYPES:
+    ADVANCED_COMPONENT_TYPES.append("coding_exam")
+""",
         ),
     ]
 )
