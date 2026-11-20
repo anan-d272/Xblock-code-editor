@@ -72,7 +72,7 @@ function CodingExamXBlock(runtime, element) {   // eslint-disable-line no-unused
   var $element = $ ? $(element) : null;
   var root = (element && element.nodeType)
     ? element
-    : ($element && $element[0] ? $element[0] : (document.querySelector(".coding-exam-container") || element));
+    : ($element && $element[0] ? $element[0] : (document.querySelector(".coding-exam-xblock") || element));
 
   var langSelect        = root.querySelector(".ce-lang-select");
   var editorEl          = root.querySelector(".ce-editor-container");
