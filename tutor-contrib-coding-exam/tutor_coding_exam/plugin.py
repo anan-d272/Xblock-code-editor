@@ -45,6 +45,11 @@ hooks.Filters.ENV_PATCHES.add_items(
             "CODING_EXAM_JUDGE0_URL: {{ CODING_EXAM_JUDGE0_URL }}\n"
             "CODING_EXAM_EXECUTION_ENGINE: {{ CODING_EXAM_EXECUTION_ENGINE }}\n",
         ),
+        # Add coding_exam to CMS ADVANCED_COMPONENT_TYPES so it appears in Studio
+        (
+            "openedx-cms-common-settings",
+            "ADVANCED_COMPONENT_TYPES += [\"coding_exam\"]\n",
+        ),
     ]
 )
 
