@@ -153,13 +153,6 @@ class CodingExamXBlock(XBlock):
         help="Maximum possible score for this coding problem.",
     )
 
-    test_cases = List(
-        display_name="Test Cases",
-        default=[],
-        scope=Scope.settings,
-        help="List of problem test cases configured by course author.",
-    )
-
     max_paste_threshold = Integer(
         default=3,
         scope=Scope.settings,
@@ -856,8 +849,16 @@ class CodingExamXBlock(XBlock):
 
     @staticmethod
     def _sanitize_error(msg):
-        """Strip server-local paths and cap length of an error string."""
-        msg = _SERVER_PATH_RE.sub("[path]", str(msg))
+        """Strip server-local paths, format sandbox errors, and cap length of an error string."""
+        raw = str(msg)
+        lower = raw.lower()
+        if any(kw in lower for kw in (
+            "connection refused", "timed out", "unreachable", "service unavailable",
+            "502", "503", "name or service not known", "failed to establish a new connection",
+            "urlopen error", "max retries exceeded", "network error",
+        )):
+            return "The code execution sandbox is currently unreachable. Please try again in a few moments, or contact course staff if this persists."
+        msg = _SERVER_PATH_RE.sub("[path]", raw)
         if len(msg) > MAX_ERROR_MSG_LENGTH:
             msg = msg[:MAX_ERROR_MSG_LENGTH] + "… [truncated]"
         return msg
