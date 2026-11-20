@@ -7,8 +7,15 @@ import os
 import subprocess
 import sys
 
+import shutil
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TUTOR_BIN = "/home/teerth/tutor19-env/bin/tutor"
+TUTOR_BIN = (
+    os.environ.get("TUTOR_BIN")
+    or shutil.which("tutor")
+    or "/home/anand/tutor-project/.venv/bin/tutor"
+    or "/home/teerth/tutor19-env/bin/tutor"
+)
 
 
 def test_tutor_plugin_recognition():
