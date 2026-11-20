@@ -550,8 +550,9 @@ function CodingExamXBlock(runtime, element) {   // eslint-disable-line no-unused
     var lang = currentLang;
 
     setButtonsBusy(true);
-    runBtn.textContent = "Running\u2026";
+    runBtn.innerHTML = '<span class="ce-spinner"></span>Running\u2026';
     runMsg.textContent = "";
+    runMsg.classList.remove("error");
     runPanel.classList.remove("visible");
     runResultsBody.innerHTML = "";
 
@@ -599,6 +600,7 @@ function CodingExamXBlock(runtime, element) {   // eslint-disable-line no-unused
     // Check client-side attempt limit before showing dialog
     if (maxAttempts > 0 && currentAttempts >= maxAttempts) {
       runMsg.textContent = "Attempt limit reached.";
+      runMsg.classList.add("error");
       return;
     }
 
@@ -615,8 +617,9 @@ function CodingExamXBlock(runtime, element) {   // eslint-disable-line no-unused
     var lang = currentLang;
 
     setButtonsBusy(true);
-    submitBtn.textContent = "Submitting\u2026";
+    submitBtn.innerHTML = '<span class="ce-spinner"></span>Submitting\u2026';
     runMsg.textContent = "";
+    runMsg.classList.remove("error");
     submitPanel.classList.remove("visible");
     submitScoreSummary.innerHTML = "";
     submitResultsBody.innerHTML = "";
