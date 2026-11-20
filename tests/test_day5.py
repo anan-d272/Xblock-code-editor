@@ -76,29 +76,54 @@ class XBlock:
         return fn
 
 
-wf_mod = types.ModuleType("web_fragments")
-wf_frag_mod = types.ModuleType("web_fragments.fragment")
-wf_frag_mod.Fragment = Fragment
-sys.modules["web_fragments"] = wf_mod
-sys.modules["web_fragments.fragment"] = wf_frag_mod
+_MOCK_MODULE_KEYS = [
+    "web_fragments", "web_fragments.fragment",
+    "xblock", "xblock.core", "xblock.fields",
+    "coding_exam", "coding_exam.block", "coding_exam.runner",
+]
 
-xblock_mod = types.ModuleType("xblock")
-xblock_core_mod = types.ModuleType("xblock.core")
-xblock_core_mod.XBlock = XBlock
-sys.modules["xblock"] = xblock_mod
-sys.modules["xblock.core"] = xblock_core_mod
+blk = None  # filled in by setUpModule
 
-xblock_fields_mod = types.ModuleType("xblock.fields")
-xblock_fields_mod.String  = String
-xblock_fields_mod.Float   = Float
-xblock_fields_mod.Integer = Integer
-xblock_fields_mod.Boolean = Boolean
-xblock_fields_mod.List    = List
-xblock_fields_mod.Dict    = Dict
-xblock_fields_mod.Scope   = Scope
-sys.modules["xblock.fields"] = xblock_fields_mod
 
-from coding_exam import block as blk  # noqa: E402
+def setUpModule():
+    """Install lightweight mock stubs so block.py can be imported without Open edX."""
+    global blk
+    # Remove any stale copies so each test module gets a clean import.
+    for key in _MOCK_MODULE_KEYS:
+        sys.modules.pop(key, None)
+
+    wf_mod = types.ModuleType("web_fragments")
+    wf_frag_mod = types.ModuleType("web_fragments.fragment")
+    wf_frag_mod.Fragment = Fragment
+    sys.modules["web_fragments"] = wf_mod
+    sys.modules["web_fragments.fragment"] = wf_frag_mod
+
+    xblock_mod = types.ModuleType("xblock")
+    xblock_core_mod = types.ModuleType("xblock.core")
+    xblock_core_mod.XBlock = XBlock
+    sys.modules["xblock"] = xblock_mod
+    sys.modules["xblock.core"] = xblock_core_mod
+
+    xblock_fields_mod = types.ModuleType("xblock.fields")
+    xblock_fields_mod.String  = String
+    xblock_fields_mod.Float   = Float
+    xblock_fields_mod.Integer = Integer
+    xblock_fields_mod.Boolean = Boolean
+    xblock_fields_mod.List    = List
+    xblock_fields_mod.Dict    = Dict
+    xblock_fields_mod.Scope   = Scope
+    sys.modules["xblock.fields"] = xblock_fields_mod
+
+    import importlib
+    import coding_exam.block
+    importlib.reload(coding_exam.block)
+    blk = coding_exam.block
+
+
+def tearDownModule():
+    """Remove mock stubs so subsequent test modules start clean."""
+    for key in _MOCK_MODULE_KEYS:
+        sys.modules.pop(key, None)
 
 
 def _make_block(
