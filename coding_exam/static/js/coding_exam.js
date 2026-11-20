@@ -68,19 +68,25 @@ function CodingExamXBlock(runtime, element) {   // eslint-disable-line no-unused
   /* ------------------------------------------------------------------ *
    * 2. DOM references — all scoped to `element`                        *
    * ------------------------------------------------------------------ */
-  var langSelect        = element.querySelector(".ce-lang-select");
-  var editorEl          = element.querySelector(".ce-editor-container");
-  var saveStatus        = element.querySelector(".ce-save-status");
-  var runBtn            = element.querySelector(".ce-run-btn");
-  var submitBtn         = element.querySelector(".ce-submit-btn");
-  var runMsg            = element.querySelector(".ce-run-msg");
-  var attemptsInfo      = element.querySelector(".ce-attempts-info");
-  var clipboardNotice   = element.querySelector(".ce-clipboard-notice");
-  var runPanel          = element.querySelector(".ce-run-panel");
-  var runResultsBody    = element.querySelector(".ce-run-results-body");
-  var submitPanel       = element.querySelector(".ce-submit-panel");
-  var submitScoreSummary = element.querySelector(".ce-submit-score-summary");
-  var submitResultsBody = element.querySelector(".ce-submit-results-body");
+  var $ = window.jQuery || window.$;
+  var $element = $ ? $(element) : null;
+  var root = (element && element.nodeType)
+    ? element
+    : ($element && $element[0] ? $element[0] : (document.querySelector(".coding-exam-container") || element));
+
+  var langSelect        = root.querySelector(".ce-lang-select");
+  var editorEl          = root.querySelector(".ce-editor-container");
+  var saveStatus        = root.querySelector(".ce-save-status");
+  var runBtn            = root.querySelector(".ce-run-btn");
+  var submitBtn         = root.querySelector(".ce-submit-btn");
+  var runMsg            = root.querySelector(".ce-run-msg");
+  var attemptsInfo      = root.querySelector(".ce-attempts-info");
+  var clipboardNotice   = root.querySelector(".ce-clipboard-notice");
+  var runPanel          = root.querySelector(".ce-run-panel");
+  var runResultsBody    = root.querySelector(".ce-run-results-body");
+  var submitPanel       = root.querySelector(".ce-submit-panel");
+  var submitScoreSummary = root.querySelector(".ce-submit-score-summary");
+  var submitResultsBody = root.querySelector(".ce-submit-results-body");
 
   /* ------------------------------------------------------------------ *
    * 3. Load initial state embedded as JSON by block.py                 *
@@ -99,7 +105,7 @@ function CodingExamXBlock(runtime, element) {   // eslint-disable-line no-unused
   };
 
   try {
-    var rawInit = element.querySelector(".ce-init-data");
+    var rawInit = root.querySelector(".ce-init-data");
     if (rawInit && rawInit.textContent) {
       initData = JSON.parse(rawInit.textContent);
     }
@@ -671,4 +677,9 @@ function CodingExamXBlock(runtime, element) {   // eslint-disable-line no-unused
       console.error("[CodingExamXBlock] submit_code fetch error:", err);
     });
   });
+
+  return {
+    runtime: runtime,
+    element: element,
+  };
 }

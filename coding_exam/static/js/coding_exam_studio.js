@@ -16,20 +16,26 @@ function CodingExamStudioXBlock(runtime, element) {
   }
 
   // ------------------------------------------------------------------ //
-  // 1. Scoped DOM selectors                                             //
+  // 1. Scoped DOM selectors (Safely handle jQuery or DOM element)       //
   // ------------------------------------------------------------------ //
-  var titleInput      = element.querySelector(".ce-studio-title");
-  var stmtTextarea    = element.querySelector(".ce-studio-statement");
-  var pointsInput     = element.querySelector(".ce-studio-points");
-  var maxAttemptsInput = element.querySelector(".ce-studio-max-attempts");
-  var langCheckboxes  = element.querySelectorAll(".ce-lang-cb");
-  var tabButtons     = element.querySelectorAll(".ce-tab-btn");
-  var starterPanes   = element.querySelectorAll(".ce-starter-pane");
-  var tcListEl       = element.querySelector(".ce-test-cases-list");
-  var addTcBtn       = element.querySelector(".ce-add-tc-btn");
-  var saveBtn        = element.querySelector(".ce-studio-save-btn");
-  var cancelBtn      = element.querySelector(".ce-studio-cancel-btn");
-  var errorBanner    = element.querySelector(".ce-studio-error");
+  var $ = window.jQuery || window.$;
+  var $element = $ ? $(element) : null;
+  var root = (element && element.nodeType)
+    ? element
+    : ($element && $element[0] ? $element[0] : (document.querySelector(".coding-exam-studio") || element));
+
+  var titleInput       = root.querySelector(".ce-studio-title");
+  var stmtTextarea     = root.querySelector(".ce-studio-statement");
+  var pointsInput      = root.querySelector(".ce-studio-points");
+  var maxAttemptsInput = root.querySelector(".ce-studio-max-attempts");
+  var langCheckboxes   = root.querySelectorAll(".ce-lang-cb");
+  var tabButtons       = root.querySelectorAll(".ce-tab-btn");
+  var starterPanes     = root.querySelectorAll(".ce-starter-pane");
+  var tcListEl         = root.querySelector(".ce-test-cases-list");
+  var addTcBtn         = root.querySelector(".ce-add-tc-btn");
+  var saveBtn          = root.querySelector(".ce-studio-save-btn");
+  var cancelBtn        = root.querySelector(".ce-studio-cancel-btn");
+  var errorBanner      = root.querySelector(".ce-studio-error");
 
   // ------------------------------------------------------------------ //
   // 2. Parse initial data                                               //
@@ -45,7 +51,7 @@ function CodingExamStudioXBlock(runtime, element) {
   };
 
   try {
-    var rawInit = element.querySelector(".ce-studio-init-data");
+    var rawInit = root.querySelector(".ce-studio-init-data");
     if (rawInit && rawInit.textContent) {
       initData = JSON.parse(rawInit.textContent);
     }
@@ -54,24 +60,26 @@ function CodingExamStudioXBlock(runtime, element) {
   }
 
   // Populate base fields
-  titleInput.value = initData.display_name || "Coding Problem";
-  stmtTextarea.value = initData.problem_statement || "";
-  pointsInput.value = (initData.points !== undefined) ? initData.points : 10.0;
+  if (titleInput) titleInput.value = initData.display_name || "Coding Problem";
+  if (stmtTextarea) stmtTextarea.value = initData.problem_statement || "";
+  if (pointsInput) pointsInput.value = (initData.points !== undefined) ? initData.points : 10.0;
   if (maxAttemptsInput) {
     maxAttemptsInput.value = (initData.max_attempts !== undefined) ? initData.max_attempts : 0;
   }
 
   // Populate allowed languages
   var allowedSet = new Set(initData.allowed_languages || ["python"]);
-  langCheckboxes.forEach(function (cb) {
-    cb.checked = allowedSet.has(cb.value);
-  });
+  if (langCheckboxes) {
+    langCheckboxes.forEach(function (cb) {
+      cb.checked = allowedSet.has(cb.value);
+    });
+  }
 
   // Populate starter code textareas
   var starters = initData.starter_code || {};
-  var pyStarter = element.querySelector(".ce-starter-python");
-  var javaStarter = element.querySelector(".ce-starter-java");
-  var cppStarter = element.querySelector(".ce-starter-cpp");
+  var pyStarter = root.querySelector(".ce-starter-python");
+  var javaStarter = root.querySelector(".ce-starter-java");
+  var cppStarter = root.querySelector(".ce-starter-cpp");
 
   if (pyStarter)   { pyStarter.value   = starters.python || ""; }
   if (javaStarter) { javaStarter.value = starters.java   || ""; }
@@ -281,7 +289,9 @@ function CodingExamStudioXBlock(runtime, element) {
     };
 
     // Notify runtime that save is in progress
-    runtime.notify("save", { state: "start" });
+    if (runtime && runtime.notify) {
+      runtime.notify("save", { state: "start" });
+    }
 
     fetch(submitUrl, {
       method: "POST",
@@ -298,21 +308,68 @@ function CodingExamStudioXBlock(runtime, element) {
       .then(function (data) {
         if (data.error) {
           showError(data.error);
-          runtime.notify("error", { message: data.error });
+          if (runtime && runtime.notify) {
+            runtime.notify("error", { message: data.error });
+          }
         } else {
           clearError();
-          runtime.notify("save", { state: "end" });
+          if (runtime && runtime.notify) {
+            runtime.notify("save", { state: "end" });
+          }
+          // Direct fallback: close Studio modal and reload page
+          setTimeout(function () {
+            closeModal();
+            window.location.reload();
+          }, 350);
         }
       })
       .catch(function (err) {
         var msg = "Network error while saving: " + err.message;
         showError(msg);
-        runtime.notify("error", { message: msg });
+        if (runtime && runtime.notify) {
+          runtime.notify("error", { message: msg });
+        }
       });
   });
 
-  cancelBtn.addEventListener("click", function () {
-    runtime.notify("cancel", {});
-  });
+  function closeModal() {
+    try {
+      if (runtime && runtime.notify) {
+        runtime.notify("cancel", {});
+      }
+    } catch (e) {
+      console.warn("[CodingExamStudio] notify cancel failed:", e);
+    }
+    // Studio modal cancel triggers
+    try {
+      var studioCancel = document.querySelectorAll(".action-cancel, .close-modal, .action-close");
+      studioCancel.forEach(function (btn) { btn.click(); });
+    } catch (e) {}
+    // Direct modal removal fallback
+    try {
+      var modalWindow = root.closest ? root.closest(".modal-window") : null;
+      if (modalWindow) modalWindow.remove();
+      var covers = document.querySelectorAll(".modal-cover, .modal-backdrop");
+      covers.forEach(function (cov) { cov.remove(); });
+    } catch (e) {}
+  }
+
+  if (cancelBtn) {
+    cancelBtn.addEventListener("click", closeModal);
+  }
+
+  // Escape key handler to allow closing modal
+  var escHandler = function (e) {
+    if (e.key === "Escape" || e.keyCode === 27) {
+      closeModal();
+      document.removeEventListener("keydown", escHandler);
+    }
+  };
+  document.addEventListener("keydown", escHandler);
+
+  return {
+    runtime: runtime,
+    element: element,
+  };
 }
 
