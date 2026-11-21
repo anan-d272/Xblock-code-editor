@@ -243,6 +243,15 @@ function CodingExamXBlock(runtime, element) {   // eslint-disable-line no-unused
   /* ------------------------------------------------------------------ *
    * 7. CodeMirror 6 editor setup                                       *
    * ------------------------------------------------------------------ */
+  // Guard: CM must be loaded before this script runs.
+  var CM = window.CM;
+  if (!CM) {
+    console.error('[CodingExamXBlock] CodeMirror bundle (window.CM) not loaded! Check script load order.');
+    var errEl = root.querySelector('.ce-editor-container');
+    if (errEl) { errEl.innerHTML = '<p style="color:red;padding:10px">Editor failed to load (CM missing). Please refresh.</p>'; }
+    return;
+  }
+
   var EditorView  = CM.EditorView;
   var EditorState = CM.EditorState;
   var Compartment = CM.Compartment;
